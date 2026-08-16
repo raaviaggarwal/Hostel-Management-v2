@@ -1,7 +1,6 @@
-import { createContext, useContext, useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { resourceApi } from '../api/client'
-
-const NotificationsContext = createContext(null)
+import { NotificationsContext } from './notifications'
 
 export function NotificationsProvider({ children }) {
   const [items, setItems] = useState([])
@@ -50,10 +49,4 @@ export function NotificationsProvider({ children }) {
       {children}
     </NotificationsContext.Provider>
   )
-}
-
-export function useNotifications() {
-  const ctx = useContext(NotificationsContext)
-  if (!ctx) throw new Error('useNotifications must be used within a NotificationsProvider')
-  return ctx
 }

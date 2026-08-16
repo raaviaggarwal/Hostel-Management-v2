@@ -5,6 +5,8 @@ import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -37,6 +39,8 @@ export default function StudentOutPass() {
   const hasOpen = data.some((o) => ['pending', 'approved', 'active'].includes(o.status))
 
   const filtered = tab === 'all' ? data : data.filter((o) => o.status === tab)
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['destination', 'reason'])
 
   const handleSubmit = async (values) => {
     setSubmitting(true)
@@ -135,7 +139,8 @@ export default function StudentOutPass() {
 
       <Card title="My Out-Passes">
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

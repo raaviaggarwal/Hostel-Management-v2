@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { App as AntApp, Button, Card, Descriptions, Form, Input, Skeleton, Space, Tabs } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import { resourceApi, apiFetch } from '../../api/client'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
 import PageHeader from '../../components/PageHeader'
 
 export default function Settings() {

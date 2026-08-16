@@ -17,7 +17,7 @@ import {
   UserOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
 import { authApi } from '../../api/client'
 import { HOME_FOR_ROLE } from '../../routes/navigation'
 

@@ -4,6 +4,8 @@ import { useResource } from '../../hooks/useResource'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 export default function AllocationHistory() {
   const { data, loading } = useResource('/allocations')
@@ -24,6 +26,8 @@ export default function AllocationHistory() {
     if (statusFilter !== 'all') list = list.filter((a) => a.status === statusFilter)
     return [...list].sort((a, b) => b.id - a.id)
   }, [data, hostelFilter, statusFilter])
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['studentName', 'regNo'])
 
   const columns = [
     { title: 'Student', dataIndex: 'studentName' },
@@ -79,12 +83,13 @@ export default function AllocationHistory() {
               ].map((s) => ({ label: s, value: s })),
             ]}
           />
+          <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
         </Space>
 
         <DataTable
           rowKey="id"
           loading={loading}
-          dataSource={filtered}
+          dataSource={searchFiltered}
           columns={columns}
           expandable={{
             expandedRowRender: (record) => (

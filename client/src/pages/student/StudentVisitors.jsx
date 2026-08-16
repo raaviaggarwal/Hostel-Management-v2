@@ -6,12 +6,21 @@ import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 export default function StudentVisitors() {
   const { message } = AntApp.useApp()
   const [form] = Form.useForm()
   const [submitting, setSubmitting] = useState(false)
   const { data, loading, reload } = useResource('/student/visitors')
+
+  const { query, setQuery, filterValue, setFilterValue, filtered } = useTableFilter(
+    data,
+    ['visitorName', 'relation'],
+    'status'
+  )
+  const statusOptions = [...new Set(data.map((r) => r.status).filter(Boolean))].map((v) => ({ label: v, value: v }))
 
   const handleSubmit = async (values) => {
     setSubmitting(true)
@@ -71,8 +80,20 @@ export default function StudentVisitors() {
         </Form>
       </Card>
 
-      <Card title="My Visitor Log">
-        <DataTable rowKey="id" loading={loading} dataSource={data} columns={columns} />
+      <Card
+        title="My Visitor Log"
+        extra={
+          <TableSearchBar
+            query={query}
+            onQuery={setQuery}
+            placeholder="Search..."
+            filterOptions={statusOptions}
+            filterValue={filterValue}
+            onFilter={setFilterValue}
+          />
+        }
+      >
+        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
       </Card>
     </>
   )

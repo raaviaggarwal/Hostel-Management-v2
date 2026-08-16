@@ -6,6 +6,8 @@ import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -22,6 +24,8 @@ export default function StudentLeave() {
   const { data, loading, reload } = useResource('/student/leaves')
 
   const filtered = tab === 'all' ? data : data.filter((l) => l.status === tab)
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['reason', 'destination'])
 
   const handleSubmit = async (values) => {
     setSubmitting(true)
@@ -85,7 +89,8 @@ export default function StudentLeave() {
 
       <Card title="My Leave Requests">
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

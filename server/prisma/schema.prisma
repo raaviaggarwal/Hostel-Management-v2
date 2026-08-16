@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int     @id @default(autoincrement())
+  name      String
+  username  String  @unique
+  email     String  @unique
+  password  String
+  role      String
+  regNo     String?
+  hostelId  Int?
+  blockId   Int?
+  studentId Int?
+}
+
+model Hostel {
+  id        Int     @id @default(autoincrement())
+  code      String
+  name      String
+  gender    String
+  type      String
+  campus    String
+  address   String
+  seats     Int
+  roomCount Int
+  note      String?
+  blocks    Block[]
+  rooms     Room[]
+}
+
+model Block {
+  id       Int    @id @default(autoincrement())
+  hostelId Int
+  name     String
+  hostel   Hostel @relation(fields: [hostelId], references: [id], onDelete: Cascade)
+  rooms    Room[]
+}
+
+model Room {
+  id              Int          @id @default(autoincrement())
+  hostelId        Int
+  blockId         Int
+  floor           Int
+  roomNo          String
+  type            String
+  seater          Int
+  status          String
+  fees            Int
+  medicalReserved Boolean      @default(false)
+  hostel          Hostel       @relation(fields: [hostelId], references: [id])
+  block           Block        @relation(fields: [blockId], references: [id])
+  allocations     Allocation[]
+}
+
+model Student {
+  id                 Int           @id @default(autoincrement())
+  regNo              String        @unique
+  name               String
+  gender             String
+  year               Int
+  course             String
+  cgpa               Float
+  contactno          String
+  emailid            String
+  roomId             Int?
+  hostelId           Int?
+  blockId            Int?
+  roomno             String?
+  seater             Int?
+  feespm             Int?
+  feeStatus          String        @default("due")
+  outpassUsed        Int           @default(0)
+  stayfrom           String?
+  guardianName       String
+  guardianRelation   String
+  guardianContactno  String
+  active             Boolean
+  allocations        Allocation[]
+  complaints         Complaint[]
+  maintenanceTickets MaintenanceTicket[]
+  fees               Fee[]
+  attendance         Attendance[]
+  entryExit          EntryExit[]
+  outpasses          Outpass[]
+  leaves             Leave[]
+  visitors           Visitor[]
+  messFeedback       MessFeedback[]
+  messComplaints     MessComplaint[]
+  medicalIncidents   MedicalIncident[]
+}
+
+model Allocation {
+  id          Int     @id @default(autoincrement())
+  studentId   Int
+  studentName String
+  regNo       String
+  gender      String
+  year        Int
+  hostelPrefs Json
+  roomType    String?
+  status      String
+  hostelId    Int?
+  roomId      Int?
+  roomNo      String?
+  bedNo       Int?
+  appliedDate String
+  updatedDate String
+  history     Json
+  student     Student @relation(fields: [studentId], references: [id])
+  room        Room?   @relation(fields: [roomId], references: [id])
+}
+
+model Complaint {
+  id               Int      @id @default(autoincrement())
+  complainNumber   Int
+  studentId        Int
+  studentName      String
+  complaintType    String
+  complaintDetails String
+  complaintDoc     Json?
+  complaintStatus  String?
+  registrationDate String
+  student          Student  @relation(fields: [studentId], references: [id])
+  actions          ComplaintAction[]
+}
+
+model ComplaintAction {
+  id              Int    @id @default(autoincrement())
+  complaintId     Int
+  complaintStatus String
+  remark          String
+  postingDate     String
+  complaint       Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+model MaintenanceTicket {
+  id           Int     @id @default(autoincrement())
+  studentId    Int
+  studentName  String
+  hostelId     Int
+  roomNo       String
+  category     String
+  subcategory  String
+  description  String
+  priority     String
+  status       String
+  assignedTo   String?
+  expectedDate String?
+  resolvedDate String?
+  createdDate  String
+  rating       Int?
+  remarks      String?
+  student      Student @relation(fields: [studentId], references: [id])
+}
+
+model InventoryItem {
+  id         Int    @id @default(autoincrement())
+  roomId     Int
+  hostelId   Int
+  item       String
+  quantity   Int
+  condition  String
+  status     String
+  assignedTo String
+}
+
+model HousekeepingTask {
+  id        Int     @id @default(autoincrement())
+  hostelId  Int
+  taskType  String
+  area      String
+  assignedTo String
+  schedule  String
+  status    String
+  inspected Boolean  @default(false)
+  rating    Int?
+}
+
+model Fee {
+  id          Int     @id @default(autoincrement())
+  studentId   Int
+  studentName String
+  amount      Int
+  dueDate     String
+  paidDate    String?
+  status      String
+  student     Student @relation(fields: [studentId], references: [id])
+}
+
+model Attendance {
+  id        Int    @id @default(autoincrement())
+  studentId Int
+  date      String
+  status    String
+  student   Student @relation(fields: [studentId], references: [id])
+}
+
+model EntryExit {
+  id             Int    @id @default(autoincrement())
+  studentId      Int
+  date           String
+  time           String
+  type           String
+  gate           String
+  status         String
+  lateMinutes    Int    @default(0)
+  linkedOutpassId Int?
+  student        Student @relation(fields: [studentId], references: [id])
+}
+
+model Outpass {
+  id            Int     @id @default(autoincrement())
+  studentId     Int
+  studentName   String
+  passNo        Int
+  destination   String
+  reason        String
+  departure     String
+  expectedReturn String
+  actualReturn  String?
+  parentApproved Boolean
+  wardenApproved Boolean
+  status        String
+  student       Student @relation(fields: [studentId], references: [id])
+}
+
+model Notice {
+  id         Int     @id @default(autoincrement())
+  title      String
+  body       String
+  category   String
+  audience   String
+  date       String
+  expiryDate String?
+  priority   String
+  active     Boolean
+}
+
+model Leave {
+  id              Int     @id @default(autoincrement())
+  studentId       Int
+  studentName     String
+  from            String
+  to              String
+  reason          String
+  destination     String
+  parentApproved  Boolean
+  status          String
+  student         Student @relation(fields: [studentId], references: [id])
+}
+
+model Visitor {
+  id          Int     @id @default(autoincrement())
+  studentId   Int
+  studentName String
+  visitorName String
+  relation    String
+  date        String
+  inTime      String?
+  outTime     String?
+  purpose     String
+  status      String
+  student     Student @relation(fields: [studentId], references: [id])
+}
+
+model MessMenu {
+  id        Int    @id @default(autoincrement())
+  day       String
+  breakfast String
+  lunch     String
+  snacks    String
+  dinner    String
+  milk      String
+}
+
+model MessFeedback {
+  id          Int    @id @default(autoincrement())
+  studentId   Int
+  date        String
+  taste       Int
+  quantity    Int
+  hygiene     Int
+  variety     Int
+  temperature Int
+  overall     Int
+  comment     String?
+  student     Student @relation(fields: [studentId], references: [id])
+}
+
+model MessComplaint {
+  id        Int     @id @default(autoincrement())
+  studentId Int
+  date      String
+  subject   String
+  details   String
+  status    String
+  student   Student @relation(fields: [studentId], references: [id])
+}
+
+model MessInspection {
+  id      Int    @id @default(autoincrement())
+  date    String
+  area    String
+  hygiene Int
+  remarks String
+}
+
+model WifiAccessPoint {
+  id          Int    @id @default(autoincrement())
+  hostelId    Int
+  accessPoint String
+  status      String
+  downtime    Int
+  issues      Json
+}
+
+model MedicalDispensary {
+  id       Int    @id @default(autoincrement())
+  doctor   String
+  nurse    String
+  contactno String
+  ambulance String
+}
+
+model MedicalIncident {
+  id             Int     @id @default(autoincrement())
+  studentId      Int
+  date           String
+  type           String
+  description    String
+  status         String
+  parentNotified Boolean
+  student        Student @relation(fields: [studentId], references: [id])
+}
+
+model CommitteeMember {
+  id   Int    @id @default(autoincrement())
+  name String
+  role String
+}
+
+model CommitteeMeeting {
+  id          Int    @id @default(autoincrement())
+  date        String
+  agenda      String
+  decisions   Json
+  actionItems Json
+}
+
+model AuditLog {
+  id        Int    @id @default(autoincrement())
+  actor     String
+  action    String
+  entity    String
+  target    String
+  before    String
+  after     String
+  timestamp String
+}
+
+model Notification {
+  id          Int     @id @default(autoincrement())
+  title       String
+  description String
+  read        Boolean
+  date        String
+}
+
+model Setting {
+  id              Int    @id @default(autoincrement())
+  hostelName      String
+  feeDeadline     String
+  maintenanceDay  String
+  messDinnerTime  String
+  wardenContact   String
+  summerInTime    String
+  winterInTime    String
+  girlsInTime     String
+  outpassTotal    Int
+}

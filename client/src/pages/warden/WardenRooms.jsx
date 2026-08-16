@@ -1,10 +1,12 @@
 import { useMemo } from 'react'
 import { Card } from 'antd'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 import { formatCurrency } from '../../utils/format'
 
 export default function WardenRooms() {
@@ -23,6 +25,8 @@ export default function WardenRooms() {
     [rooms, hostelBlockIds]
   )
 
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, ['roomNo'])
+
   const occupancy = (roomNo) => students.filter((s) => s.roomno === roomNo).length
   const blockName = (id) => blocks.find((b) => b.id === id)?.name || '-'
 
@@ -39,7 +43,8 @@ export default function WardenRooms() {
     <>
       <PageHeader title="Rooms" subtitle="Rooms within your hostel." />
       <Card>
-        <DataTable rowKey="id" loading={loading} dataSource={scoped} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

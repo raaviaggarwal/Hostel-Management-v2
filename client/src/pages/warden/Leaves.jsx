@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import { App as AntApp, Button, Card, Popconfirm, Space, Tabs } from 'antd'
 import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -36,6 +38,11 @@ export default function Leaves() {
     const filtered = data.filter((l) => hostelStudentIds.has(l.studentId))
     return tab === 'all' ? filtered : filtered.filter((l) => l.status === tab)
   }, [data, tab, hostelStudentIds])
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, [
+    'studentName',
+    'reason',
+  ])
 
   const decide = async (leave, status) => {
     try {
@@ -87,7 +94,8 @@ export default function Leaves() {
       <PageHeader title="Leaves" subtitle="Approve or reject student leave requests." />
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={scoped} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

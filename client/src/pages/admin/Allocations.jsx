@@ -23,6 +23,8 @@ import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -85,6 +87,8 @@ export default function Allocations() {
     }
     return tab === 'all' ? list : list.filter((a) => a.status === tab)
   }, [data, tab, hostelFilter])
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['studentName', 'regNo'])
 
   const run = async (fn, success) => {
     setSaving(true)
@@ -239,9 +243,10 @@ export default function Allocations() {
               ...hostels.map((h) => ({ label: `${h.name} (${h.code})`, value: h.id })),
             ]}
           />
+          <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
           <Tabs items={TABS} activeKey={tab} onChange={setTab} />
         </Space>
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
 
       <Modal

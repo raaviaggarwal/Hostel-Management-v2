@@ -4,6 +4,8 @@ import { useResource } from '../../hooks/useResource'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 
 export default function EntryExit() {
   const [studentId, setStudentId] = useState()
@@ -19,6 +21,8 @@ export default function EntryExit() {
     if (date) list = list.filter((e) => e.date === date.format('YYYY-MM-DD'))
     return list
   }, [data, studentId, date])
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['studentId', 'gate'])
 
   const columns = [
     { title: 'Student', dataIndex: 'studentId', render: (v) => nameOf(v) },
@@ -55,11 +59,12 @@ export default function EntryExit() {
             value={date}
             onChange={setDate}
           />
+          <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
         </Space>
       </Card>
 
       <Card>
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

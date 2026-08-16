@@ -4,9 +4,11 @@ import { SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { apiFetch, resourceApi } from '../../api/client'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
+import TableSearchBar from '../../components/TableSearchBar'
 
 export default function WardenAttendance() {
   const { message } = AntApp.useApp()
@@ -40,6 +42,8 @@ export default function WardenAttendance() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateStr, blockId])
+
+  const { query, setQuery, filtered } = useTableFilter(records, ['regNo', 'name'])
 
   const setStatus = (studentId, status) => {
     setRecords((prev) => prev.map((r) => (r.studentId === studentId ? { ...r, status } : r)))
@@ -122,10 +126,11 @@ export default function WardenAttendance() {
       </Card>
 
       <Card>
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
         <DataTable
           rowKey="studentId"
           loading={loading}
-          dataSource={records}
+          dataSource={filtered}
           columns={columns}
           pagination={false}
         />

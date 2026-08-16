@@ -3,7 +3,7 @@ import { App as AntApp, Alert, Button, Card, Form, Radio, Result, Select, Space,
 import { useNavigate } from 'react-router-dom'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
 import PageHeader from '../../components/PageHeader'
 import StatusTag from '../../components/StatusTag'
 

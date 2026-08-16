@@ -2,16 +2,25 @@ import { describe, it, expect } from 'vitest'
 import { NAV, HOME_FOR_ROLE, navForRole, portalForRole, PORTAL_FOR_ROLE } from '../routes/navigation'
 
 describe('role navigation config', () => {
-  it('admin has 13 links', () => {
-    expect(NAV.admin).toHaveLength(13)
+  it('admin has 23 links', () => {
+    expect(NAV.admin).toHaveLength(23)
   })
 
-  it('warden has 13 links', () => {
-    expect(NAV.warden).toHaveLength(13)
+  it('warden has 15 links', () => {
+    expect(NAV.warden).toHaveLength(15)
   })
 
-  it('student has 14 links', () => {
-    expect(NAV.student).toHaveLength(14)
+  it('student has 16 links', () => {
+    expect(NAV.student).toHaveLength(16)
+  })
+
+  it('staff portals have their module links', () => {
+    expect(NAV.security).toHaveLength(4)
+    expect(NAV.mess).toHaveLength(5)
+    expect(NAV.housekeeping).toHaveLength(2)
+    expect(NAV.maintenance).toHaveLength(2)
+    expect(NAV.caretaker).toHaveLength(1)
+    expect(NAV.parent).toHaveLength(1)
   })
 
   it('every link has a unique key, label and icon', () => {

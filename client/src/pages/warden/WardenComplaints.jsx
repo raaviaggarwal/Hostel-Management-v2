@@ -2,12 +2,14 @@ import { useMemo, useState } from 'react'
 import { App as AntApp, Button, Card, Descriptions, Modal, Skeleton, Space, Tabs, Timeline, Typography } from 'antd'
 import { EyeOutlined, ToolOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import EntityModal from '../../components/EntityModal'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 import { formatDateTime } from '../../utils/format'
 
 const TABS = [
@@ -44,6 +46,12 @@ export default function WardenComplaints() {
     () => data.filter((c) => hostelStudentIds.has(c.studentId)),
     [data, hostelStudentIds]
   )
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, [
+    'studentName',
+    'complaintType',
+    'complaintDetails',
+  ])
 
   const openView = async (complaint) => {
     setViewing(complaint)
@@ -101,7 +109,8 @@ export default function WardenComplaints() {
 
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={scoped} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
 
       <Modal

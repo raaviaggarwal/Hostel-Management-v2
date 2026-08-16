@@ -2,14 +2,17 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { Button, Card, Col, Descriptions, Empty, Row, Statistic, Tag, Skeleton } from 'antd'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 export default function HostelDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
   const { data, loading } = useResource(`/hostels/${id}`)
+  const { query, setQuery, filtered } = useTableFilter(data?.rooms || [], ['roomNo', 'wing'])
 
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />
   if (!data || !data.id) return <Empty description="Hostel not found" style={{ marginTop: 60 }} />
@@ -80,8 +83,8 @@ export default function HostelDetail() {
         />
       </Card>
 
-      <Card style={{ marginTop: 16 }} title="Rooms">
-        <DataTable rowKey="id" loading={loading} dataSource={data.rooms} columns={columns} />
+      <Card style={{ marginTop: 16 }} title="Rooms" extra={<TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />}>
+        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
       </Card>
     </>
   )

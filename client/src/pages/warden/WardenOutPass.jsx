@@ -3,9 +3,11 @@ import { App as AntApp, Button, Card, Popconfirm, Space, Tabs } from 'antd'
 import { CheckOutlined, CloseOutlined, LogoutOutlined, UndoOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -24,6 +26,11 @@ export default function WardenOutPass() {
     () => (tab === 'all' ? data : data.filter((o) => o.status === tab)),
     [data, tab]
   )
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, [
+    'studentName',
+    'destination',
+  ])
 
   const decide = async (record, status) => {
     try {
@@ -116,7 +123,8 @@ export default function WardenOutPass() {
       <PageHeader title="Out-Passes" subtitle="Approve requests and track student movement." />
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

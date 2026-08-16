@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from '../context/AuthContext'
 import ProtectedRoute from '../routes/ProtectedRoute'
-import { TOKEN_KEY, EXPIRY_KEY, USER_KEY } from '../context/AuthContext'
+import { TOKEN_KEY, EXPIRY_KEY, USER_KEY } from '../context/auth'
 
 function Harness({ initialEntry }) {
   return (

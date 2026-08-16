@@ -6,11 +6,9 @@ function readToken() {
 
 export async function apiFetch(path, options = {}) {
   const token = readToken()
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  }
+  const headers = { ...(options.headers || {}) }
   if (token) headers.Authorization = `Bearer ${token}`
+  if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -48,7 +46,14 @@ export const resourceApi = {
     apiFetch(path, { method: 'POST', body: JSON.stringify(payload) }),
   patch: (path, id, payload) =>
     apiFetch(`${path}/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  put: (path, payload) =>
+    apiFetch(path, { method: 'PUT', body: JSON.stringify(payload) }),
   update: (path, id, payload) =>
     apiFetch(`${path}/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (path, id) => apiFetch(`${path}/${id}`, { method: 'DELETE' }),
+  upload: (path, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return apiFetch(path, { method: 'POST', body: form })
+  },
 }

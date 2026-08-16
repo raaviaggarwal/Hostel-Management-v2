@@ -14,12 +14,13 @@ to work on it.
 
 ## Quick facts
 
-- **Current build**: `client/` — React 19 + Vite 8 + Ant Design 6 + MSW (mock-first).
-- **Backend**: none yet. A real Express + Prisma + PostgreSQL backend is planned
-  after the mock phase is feature-complete.
+- **Current build**: two packages —
+  - `client/` — React 19 + Vite 8 + Ant Design 6 SPA (no MSW; talks to the real
+    backend via a dev-server proxy on `/api`).
+  - `server/` — Express + Prisma + PostgreSQL + JWT REST API.
 - **Legacy**: the PHP/MySQL files at the repository root (`*.php`, `hostel.sql`)
   are the previous version and are no longer maintained.
-- **Demo logins** (see `client/src/mocks/data.js` `users`):
+- **Demo logins** (seeded by `server/prisma/seed.js`; passwords bcrypt-hashed):
 
   | Role | Username | Password |
   | --- | --- | --- |
@@ -32,6 +33,9 @@ to work on it.
   | Security | `security` | `security123` |
   | Housekeeping | `housekeeping` | `house123` |
   | Maintenance staff | `maintenance` | `main123` |
+  | Parent | `parent` | `parent123` |
 
-- **Verification**: run `npm run test`, `npm run lint`, `npm run build` in
-  `client/` after every change. Currently 41 tests, all green.
+- **Verification**: after every change run the client gate (`npm run test`,
+  `npm run lint`, `npm run build` in `client/` — 39 tests) and the server gate
+  (`npm run lint` in `server/`, plus `npm run test` — 68 API tests — which
+  require a running PostgreSQL).

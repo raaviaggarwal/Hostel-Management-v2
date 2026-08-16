@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { App as AntApp, ConfigProvider, theme as antdTheme } from 'antd'
-import { useTheme } from './context/ThemeContext'
-import { useAuth } from './context/AuthContext'
+import { useTheme } from './context/theme'
+import { useAuth } from './context/auth'
 import { HOME_FOR_ROLE } from './routes/navigation'
 import ProtectedRoute from './routes/ProtectedRoute'
 import AdminRoutes from './routes/AdminRoutes'
@@ -12,7 +12,7 @@ import WardenLayout from './layout/WardenLayout'
 import StudentLayout from './layout/StudentLayout'
 import PortalLayout from './layout/PortalLayout'
 import Login from './pages/auth/Login'
-import PortalComingSoon from './pages/portal/PortalComingSoon'
+import { portalRoutes } from './routes/PortalRoutes'
 
 const WARDEN_ROLES = ['warden', 'chief_warden', 'deputy_warden', 'assistant_warden']
 
@@ -93,16 +93,7 @@ export default function App() {
               element={<ProtectedRoute roles={def.roles} />}
             >
               <Route element={<PortalLayout portal={portal} />}>
-                <Route
-                  path="dashboard"
-                  element={
-                    <PortalComingSoon
-                      portal={portal}
-                      title={def.title}
-                      subtitle={def.subtitle}
-                    />
-                  }
-                />
+                {portalRoutes[portal]}
                 <Route path="*" element={<Navigate to={`/${portal}/dashboard`} replace />} />
               </Route>
             </Route>

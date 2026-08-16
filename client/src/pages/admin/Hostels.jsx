@@ -2,16 +2,19 @@ import { useState } from 'react'
 import { App as AntApp, Button, Card, Space, Tag } from 'antd'
 import { PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import EntityModal from '../../components/EntityModal'
 import ConfirmDelete from '../../components/ConfirmDelete'
+import TableSearchBar from '../../components/TableSearchBar'
 
 export default function Hostels() {
   const { message } = AntApp.useApp()
   const { data, loading, reload } = useResource('/hostels')
   const { data: blocks } = useResource('/blocks')
+  const { query, setQuery, filtered } = useTableFilter(data, ['name', 'address'])
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -102,8 +105,8 @@ export default function Hostels() {
         }
       />
 
-      <Card>
-        <DataTable rowKey="id" loading={loading} dataSource={data} columns={columns} />
+      <Card extra={<TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />}>
+        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
       </Card>
 
       <EntityModal

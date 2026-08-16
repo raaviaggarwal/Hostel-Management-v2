@@ -1,19 +1,32 @@
+/* oxlint-disable react/only-export-components */
+import { lazy } from 'react'
 import { Route } from 'react-router-dom'
-import Dashboard from '../pages/admin/Dashboard'
-import Students from '../pages/admin/Students'
-import Wardens from '../pages/admin/Wardens'
-import Hostels from '../pages/admin/Hostels'
-import HostelDetail from '../pages/admin/HostelDetail'
-import Rooms from '../pages/admin/Rooms'
-import RoomDetail from '../pages/admin/RoomDetail'
-import Allocations from '../pages/admin/Allocations'
-import WaitingList from '../pages/admin/WaitingList'
-import AllocationHistory from '../pages/admin/AllocationHistory'
-import Fees from '../pages/admin/Fees'
-import Reports from '../pages/admin/Reports'
-import Settings from '../pages/admin/Settings'
-import EntryExit from '../pages/admin/EntryExit'
-import NotificationsList from '../components/NotificationsList'
+
+const Dashboard = lazy(() => import('../pages/admin/Dashboard'))
+const Students = lazy(() => import('../pages/admin/Students'))
+const Wardens = lazy(() => import('../pages/admin/Wardens'))
+const Hostels = lazy(() => import('../pages/admin/Hostels'))
+const HostelDetail = lazy(() => import('../pages/admin/HostelDetail'))
+const Rooms = lazy(() => import('../pages/admin/Rooms'))
+const RoomDetail = lazy(() => import('../pages/admin/RoomDetail'))
+const Allocations = lazy(() => import('../pages/admin/Allocations'))
+const WaitingList = lazy(() => import('../pages/admin/WaitingList'))
+const AllocationHistory = lazy(() => import('../pages/admin/AllocationHistory'))
+const Fees = lazy(() => import('../pages/admin/Fees'))
+const Reports = lazy(() => import('../pages/admin/Reports'))
+const Settings = lazy(() => import('../pages/admin/Settings'))
+const EntryExit = lazy(() => import('../pages/admin/EntryExit'))
+const Complaints = lazy(() => import('../pages/admin/Complaints'))
+const Maintenance = lazy(() => import('../pages/admin/Maintenance'))
+const Inventory = lazy(() => import('../pages/admin/Inventory'))
+const Housekeeping = lazy(() => import('../pages/admin/Housekeeping'))
+const Mess = lazy(() => import('../pages/admin/Mess'))
+const Wifi = lazy(() => import('../pages/admin/Wifi'))
+const Medical = lazy(() => import('../pages/admin/Medical'))
+const Visitors = lazy(() => import('../pages/admin/Visitors'))
+const Committee = lazy(() => import('../pages/admin/Committee'))
+const AuditLogs = lazy(() => import('../pages/admin/AuditLogs'))
+const NotificationsList = lazy(() => import('../components/NotificationsList'))
 
 export default [
   <Route key="admin-dashboard" path="dashboard" element={<Dashboard />} />,
@@ -28,7 +41,17 @@ export default [
   <Route key="admin-wardens" path="wardens" element={<Wardens />} />,
   <Route key="admin-fees" path="fees" element={<Fees />} />,
   <Route key="admin-entry-exit" path="entry-exit" element={<EntryExit />} />,
+  <Route key="admin-complaints" path="complaints" element={<Complaints />} />,
+  <Route key="admin-maintenance" path="maintenance" element={<Maintenance />} />,
+  <Route key="admin-inventory" path="inventory" element={<Inventory />} />,
+  <Route key="admin-housekeeping" path="housekeeping" element={<Housekeeping />} />,
+  <Route key="admin-mess" path="mess" element={<Mess />} />,
+  <Route key="admin-wifi" path="wifi" element={<Wifi />} />,
+  <Route key="admin-medical" path="medical" element={<Medical />} />,
+  <Route key="admin-visitors" path="visitors" element={<Visitors />} />,
+  <Route key="admin-committee" path="committee" element={<Committee />} />,
   <Route key="admin-reports" path="reports" element={<Reports />} />,
+  <Route key="admin-audit-logs" path="audit-logs" element={<AuditLogs />} />,
   <Route key="admin-settings" path="settings" element={<Settings />} />,
   <Route key="admin-notifications" path="notifications" element={<NotificationsList />} />,
 ]

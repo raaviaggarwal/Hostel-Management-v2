@@ -1,9 +1,104 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd'
-import { DownloadOutlined, WalletOutlined, BugOutlined, TeamOutlined } from '@ant-design/icons'
+import { DownloadOutlined, WalletOutlined, BugOutlined, TeamOutlined, ToolOutlined, LikeOutlined } from '@ant-design/icons'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import { downloadCsv, formatCurrency } from '../../utils/format'
+
+const EXPORTS = {
+  students: { endpoint: '/students' },
+  fees: { endpoint: '/fees' },
+  complaints: {
+    endpoint: '/complaints',
+    columns: [
+      { key: 'complainNumber', label: 'Complaint No' },
+      { key: 'studentName', label: 'Student' },
+      { key: 'complaintType', label: 'Type' },
+      { key: 'complaintDetails', label: 'Details' },
+      { key: 'complaintStatus', label: 'Status' },
+      { key: 'registrationDate', label: 'Registered On' },
+    ],
+  },
+  maintenance: {
+    endpoint: '/maintenance',
+    columns: [
+      { key: 'id', label: 'Ticket ID' },
+      { key: 'studentName', label: 'Student' },
+      { key: 'roomNo', label: 'Room' },
+      { key: 'category', label: 'Category' },
+      { key: 'description', label: 'Description' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'status', label: 'Status' },
+      { key: 'assignedTo', label: 'Assigned To' },
+      { key: 'createdDate', label: 'Raised On' },
+      { key: 'resolvedDate', label: 'Resolved On' },
+      { key: 'rating', label: 'Rating' },
+    ],
+  },
+  visitors: {
+    endpoint: '/visitors',
+    columns: [
+      { key: 'visitorName', label: 'Visitor' },
+      { key: 'relation', label: 'Relation' },
+      { key: 'studentName', label: 'Student' },
+      { key: 'date', label: 'Date' },
+      { key: 'inTime', label: 'In Time' },
+      { key: 'outTime', label: 'Out Time' },
+      { key: 'purpose', label: 'Purpose' },
+      { key: 'status', label: 'Status' },
+    ],
+  },
+  inventory: {
+    endpoint: '/inventory',
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'item', label: 'Item' },
+      { key: 'quantity', label: 'Quantity' },
+      { key: 'condition', label: 'Condition' },
+      { key: 'status', label: 'Status' },
+      { key: 'assignedTo', label: 'Assigned To' },
+    ],
+  },
+  housekeeping: {
+    endpoint: '/housekeeping',
+    columns: [
+      { key: 'id', label: 'Task ID' },
+      { key: 'taskType', label: 'Task' },
+      { key: 'area', label: 'Area' },
+      { key: 'assignedTo', label: 'Assigned To' },
+      { key: 'schedule', label: 'Scheduled' },
+      { key: 'status', label: 'Status' },
+      { key: 'inspected', label: 'Inspected' },
+      { key: 'rating', label: 'Rating' },
+    ],
+  },
+  'mess-feedback': {
+    endpoint: '/mess/feedback',
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'studentId', label: 'Student ID' },
+      { key: 'date', label: 'Date' },
+      { key: 'overall', label: 'Overall' },
+      { key: 'taste', label: 'Taste' },
+      { key: 'quantity', label: 'Quantity' },
+      { key: 'hygiene', label: 'Hygiene' },
+      { key: 'variety', label: 'Variety' },
+      { key: 'temperature', label: 'Temperature' },
+      { key: 'comment', label: 'Comment' },
+    ],
+  },
+  'audit-logs': {
+    endpoint: '/audit-logs',
+    columns: [
+      { key: 'id', label: 'ID' },
+      { key: 'actor', label: 'Actor' },
+      { key: 'action', label: 'Action' },
+      { key: 'entity', label: 'Entity' },
+      { key: 'target', label: 'Target' },
+      { key: 'timestamp', label: 'Timestamp' },
+    ],
+  },
+}
 
 export default function Reports() {
   const [report, setReport] = useState(null)
@@ -27,8 +122,9 @@ export default function Reports() {
   ]
 
   const download = async (kind) => {
-    const list = await resourceApi.get(`/${kind}`)
-    downloadCsv(`${kind}.csv`, list)
+    const config = EXPORTS[kind]
+    const list = await resourceApi.get(config.endpoint)
+    downloadCsv(`${kind}.csv`, list, config.columns)
   }
 
   return (
@@ -51,6 +147,36 @@ export default function Reports() {
             <Col>
               <Button icon={<DownloadOutlined />} onClick={() => download('complaints')}>
                 Complaints
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('maintenance')}>
+                Maintenance
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('visitors')}>
+                Visitors
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('inventory')}>
+                Inventory
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('housekeeping')}>
+                Housekeeping
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('mess-feedback')}>
+                Mess Feedback
+              </Button>
+            </Col>
+            <Col>
+              <Button icon={<DownloadOutlined />} onClick={() => download('audit-logs')}>
+                Audit Logs
               </Button>
             </Col>
           </Row>
@@ -128,6 +254,50 @@ export default function Reports() {
               value={report.attendanceSummary.leave}
               prefix={<TeamOutlined />}
             />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic
+              title="Campus Fees"
+              value={formatCurrency(report.feeByCampus.campus)}
+              valueStyle={{ color: '#04335C' }}
+              prefix={<WalletOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic
+              title="Off-Campus Fees"
+              value={formatCurrency(report.feeByCampus['off-campus'])}
+              valueStyle={{ color: '#5A67D8' }}
+              prefix={<WalletOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic
+              title="Open Maintenance"
+              value={report.maintenanceSummary.open}
+              valueStyle={{ color: '#C0392B' }}
+              prefix={<ToolOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic
+              title="Maintenance Rating"
+              value={report.maintenanceSummary.avgRating}
+              prefix={<LikeOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card size="small">
+            <Statistic title="Mess Rating" value={report.messRating} prefix={<LikeOutlined />} />
           </Card>
         </Col>
       </Row>

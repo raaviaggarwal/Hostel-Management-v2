@@ -1,21 +1,13 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
-
-const AuthContext = createContext(null)
-
-export const TOKEN_KEY = 'token'
-export const EXPIRY_KEY = 'sessionExpiry'
-export const SIDEBAR_KEY = 'sidebarState'
-export const USER_KEY = 'user'
-export const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours
-
-export function readUser() {
-  try {
-    const raw = localStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import {
+  AuthContext,
+  TOKEN_KEY,
+  EXPIRY_KEY,
+  USER_KEY,
+  SIDEBAR_KEY,
+  SESSION_DURATION,
+  readUser,
+} from './auth'
 
 function isSessionValid() {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -112,10 +104,4 @@ export function AuthProvider({ children }) {
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within an AuthProvider')
-  return ctx
 }

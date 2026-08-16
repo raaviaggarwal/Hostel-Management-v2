@@ -19,11 +19,13 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -76,6 +78,11 @@ export default function WardenAllocations() {
     () => (tab === 'all' ? data : data.filter((a) => a.status === tab)),
     [data, tab]
   )
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, [
+    'studentName',
+    'regNo',
+  ])
 
   const run = async (fn, success) => {
     setSaving(true)
@@ -236,7 +243,8 @@ export default function WardenAllocations() {
 
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
 
       <Modal

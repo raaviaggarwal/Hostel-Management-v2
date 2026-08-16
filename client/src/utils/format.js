@@ -11,18 +11,27 @@ export const formatDate = (value) =>
 export const formatDateTime = (value) =>
   value ? String(value).slice(0, 16) : '-'
 
-export function downloadCsv(filename, rows) {
-  if (!rows.length) return
-  const headers = Object.keys(rows[0])
-  const escape = (cell) => {
-    const value = String(cell ?? '')
-    return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+const escape = (cell) => {
+  const value = String(cell ?? '')
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+export function buildCsv(rows, columns) {
+  const cols = columns && columns.length ? columns : Object.keys(rows[0] || {})
+  const header = (key) => {
+    if (!columns) return key
+    return cols.find((c) => c.key === key)?.label || key
   }
   const lines = [
-    headers.join(','),
-    ...rows.map((row) => headers.map((header) => escape(row[header])).join(',')),
+    cols.map((c) => header(c.key ?? c)).join(','),
+    ...rows.map((row) => cols.map((c) => escape(row[c.key ?? c])).join(',')),
   ]
-  const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8;' })
+  return `\uFEFF${lines.join('\n')}`
+}
+
+export function downloadCsv(filename, rows, columns) {
+  if (!rows.length) return
+  const blob = new Blob([buildCsv(rows, columns)], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url

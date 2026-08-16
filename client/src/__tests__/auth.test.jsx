@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import {
   AuthProvider,
+} from '../context/AuthContext'
+import {
   useAuth,
   TOKEN_KEY,
   EXPIRY_KEY,
   USER_KEY,
   SIDEBAR_KEY,
   SESSION_DURATION,
-} from '../context/AuthContext'
+} from '../context/auth'
 
 function Probe() {
   const { isAuthenticated, user, login, logout, toggleSidebar, sidebarOpen } = useAuth()

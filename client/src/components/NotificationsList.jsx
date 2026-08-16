@@ -2,7 +2,7 @@ import { App as AntApp, Button, Card, Empty, List, Space, Tag, Typography } from
 import { CheckOutlined } from '@ant-design/icons'
 import { useResource } from '../hooks/useResource'
 import { resourceApi } from '../api/client'
-import { useNotifications } from '../context/NotificationsContext'
+import { useNotifications } from '../context/notifications'
 import PageHeader from './PageHeader'
 
 export default function NotificationsList() {

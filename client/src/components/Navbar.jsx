@@ -10,9 +10,9 @@ import {
   ProfileOutlined,
 } from '@ant-design/icons'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import { useTheme } from '../context/ThemeContext'
-import { useNotifications } from '../context/NotificationsContext'
+import { useAuth } from '../context/auth'
+import { useTheme } from '../context/theme'
+import { useNotifications } from '../context/notifications'
 import { navForRole, HOME_FOR_ROLE } from '../routes/navigation'
 import { buildBreadcrumb } from '../utils/breadcrumb'
 import { ROLE_COLOR } from '../utils/roles'

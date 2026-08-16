@@ -1,6 +1,6 @@
 import { Card, Typography, Tag, Skeleton, Space } from 'antd'
 import { navForRole } from '../routes/navigation'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/auth'
 import { ROLE_COLOR } from '../utils/roles'
 
 export default function PagePlaceholder({ role, path }) {

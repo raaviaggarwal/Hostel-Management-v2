@@ -3,10 +3,12 @@ import { App as AntApp, Button, Card, Col, DatePicker, Form, Input, Row, Select,
 import dayjs from 'dayjs'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 const todayLocal = () => {
   const d = new Date()
@@ -28,6 +30,8 @@ export default function WardenEntryExit() {
     if (!user?.hostelId) return students
     return students.filter((s) => String(s.hostelId) === String(user.hostelId))
   }, [students, user])
+
+  const { query, setQuery, filtered } = useTableFilter(data, ['studentId', 'gate'])
 
   const nameOf = (id) => students.find((s) => s.id === id)?.name || `#${id}`
 
@@ -150,7 +154,8 @@ export default function WardenEntryExit() {
       </Card>
 
       <Card title="Recent Punches">
-        <DataTable rowKey="id" loading={loading} dataSource={data} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
       </Card>
     </>
   )

@@ -8,6 +8,8 @@ import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import EntityModal from '../../components/EntityModal'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { formatCurrency } from '../../utils/format'
 
 const TABS = [
@@ -22,6 +24,7 @@ export default function Fees() {
   const [tab, setTab] = useState('all')
   const { data, loading, reload } = useResource(`/fees?status=${tab}`)
   const { data: students } = useResource('/students')
+  const { query, setQuery, filtered } = useTableFilter(data, ['studentName'])
 
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -101,7 +104,8 @@ export default function Fees() {
 
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={data} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={filtered} columns={columns} />
       </Card>
 
       <EntityModal

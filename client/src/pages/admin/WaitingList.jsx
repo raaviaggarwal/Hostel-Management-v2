@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import { App as AntApp, Button, Card, Descriptions, Modal, Popconfirm, Radio, Select, Space } from 'antd'
 import { useResource } from '../../hooks/useResource'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 
 export default function WaitingList() {
   const { message } = AntApp.useApp()
@@ -25,6 +27,8 @@ export default function WaitingList() {
         .sort((a, b) => (a.appliedDate < b.appliedDate ? -1 : 1)),
     [data]
   )
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(waitlisted, ['studentName', 'regNo'])
 
   const blockIds = useMemo(() => blocks.map((b) => b.id), [blocks])
 
@@ -111,8 +115,10 @@ export default function WaitingList() {
         subtitle="Waitlisted applicants, prioritised by application date."
       />
 
-      <Card>
-        <DataTable rowKey="id" loading={loading} dataSource={waitlisted} columns={columns} />
+      <Card
+        extra={<TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />}
+      >
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
 
       <Modal

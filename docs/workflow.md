@@ -90,7 +90,7 @@ new application.
   and bar chart split by gender.
 - **Hostel Mgmt**: add/edit/delete hostels; view a hostel's wings and rooms
   (`HostelDetail`).
-- **Room Mgmt**: browse/search/filter all 1,017 rooms, add rooms, change room
+- **Room Mgmt**: browse/search/filter all 1,029 rooms, add rooms, change room
   status (`available`, `maintenance`, `medical_reserved`, `cleaning`, `blocked`),
   view room detail (occupants + inventory).
 - **Allocation**: review every application (optionally filtered by hostel),
@@ -99,8 +99,11 @@ new application.
   **Allocation History** (full audit trail with expandable history timeline).
 - **Students / Wardens**: CRUD; assign/change a student's room
   (`PUT /students/:id/room`).
-- **Fees / Reports / Settings / Notices**: fee records, summary reports + CSV
-  exports, system settings, notices.
+- **Fees / Reports / Settings / Notices**: fee records (off-campus billed at
+  the ₹70,000/semester slab), summary reports + CSV exports (fee summary,
+  fee-by-campus, occupancy, complaints by type, maintenance summary, mess
+  rating), system settings, notices, **Committee** (members + meetings) and
+  **Audit Logs** (admin-only action history).
 
 ### Warden
 
@@ -119,7 +122,7 @@ Scoped to their own hostel (`user.hostelId`).
   (`POST /outpasses/:id/activate`) and returned (`POST /outpasses/:id/complete`);
   both auto-log a gate punch.
 - **Entry / Exit**: record a biometric gate punch for any student
-  (`POST /entry-exit`) — the mock auto-flags `late`/`violation` entries and
+  (`POST /entry-exit`) — the API auto-flags `late`/`violation` entries and
   drives out-pass transitions; a scoped punch log is shown.
 - **Leaves / Complaints / Visitors / Mess Menu / Notices**: manage their
   hostel's records (approve/reject leaves, action complaints, update visitors,
@@ -138,11 +141,46 @@ Scoped to their own hostel (`user.hostelId`).
   with quota) and history (gate punches, status timelines), plus fee payment
   (`POST /student/fees/:id/pay`).
 
-### Service portals (placeholder until later slices)
+### Security
 
-Caretaker, Mess Manager, Security, Housekeeping, Maintenance Staff and Parent
-log in to their own dashboards (`PortalComingSoon`). Their full modules are
-planned in the slice roadmap (see development-workflow.md).
+- **Dashboard**: today's gate punches, late/violation counts, students outside,
+  pending + on-campus visitors.
+- **Entry / Exit**: record a gate punch for any student (`POST /entry-exit`);
+  auto-flags `late`/`violation` and drives out-pass transitions.
+- **Visitors**: check a visitor in/out at the gate
+  (`POST /visitors/:id/checkin` / `checkout`).
+- **Out-Pass Control**: verify approved/active out-passes (`GET
+  /security/outpasses`) and mark departures/returns.
+
+### Mess Manager
+
+- **Dashboard**: average ratings (overall/taste/hygiene), open complaints,
+  inspection count, today's menu.
+- **Menu**: edit the weekly menu (`PUT /mess-menu/:id`).
+- **Feedback / Complaints / Inspections**: review meal ratings, resolve
+  complaints, record hygiene inspections (`POST /mess/inspections`).
+
+### Housekeeping Staff
+
+Scoped to `user.hostelId`. **Dashboard** shows task totals; **Tasks** lists
+their hostel's cleaning jobs and lets staff start/complete them
+(`PUT /housekeeping/:id`).
+
+### Maintenance Staff
+
+Scoped to `user.hostelId`. **Dashboard** shows ticket totals; **Tickets** lists
+their hostel's repair jobs and lets staff start work, set expected dates,
+update status/remarks and resolve tickets (`PUT /maintenance/:id`).
+
+### Caretaker
+
+Scoped to `user.hostelId`. **Dashboard**: total/occupied rooms, occupancy %,
+pending housekeeping tasks and open maintenance tickets for the hostel.
+
+### Parent
+
+Read-only. **Dashboard** (`GET /parent/ward`) shows the linked ward's profile
+and room, fees, attendance, leave and out-pass history plus applicable notices.
 
 ## Cross-cutting workflows
 

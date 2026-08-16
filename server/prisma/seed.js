@@ -1,23 +1,13 @@
+import 'dotenv/config'
+import bcrypt from 'bcryptjs'
+import { pathToFileURL } from 'node:url'
+import { PrismaClient } from '@prisma/client'
+
 // ---------------------------------------------------------------------------
-// Hostel Management System — mock seed data
-// JUIT structure: 5 campus hostels + 2 off-campus extensions.
-// Hierarchy: Hostel -> Wing (block) -> Floor -> Room (type/capacity/beds).
+// Deterministic seed generation — mirrors client/src/mocks/data.js shapes so
+// the API responses stay identical to the mock.
 // ---------------------------------------------------------------------------
 
-// ---- Users ----
-export const users = [
-  { id: 1, name: 'System Admin', username: 'admin', email: 'admin@hostel.com', password: 'admin123', role: 'admin' },
-  { id: 2, name: 'Rakesh Sharma', username: 'warden', email: 'warden@hostel.com', password: 'warden123', role: 'warden', hostelId: 2 },
-  { id: 3, name: 'Meena Verma', username: 'meena', email: 'meena@hostel.com', password: 'warden123', role: 'warden', hostelId: 5 },
-  { id: 4, name: 'Dr. S. Khatri', username: 'chief', email: 'chief@hostel.com', password: 'warden123', role: 'chief_warden' },
-  { id: 5, name: 'Ramesh Kumar', username: 'caretaker', email: 'caretaker@hostel.com', password: 'caretaker123', role: 'caretaker', hostelId: 2 },
-  { id: 6, name: 'Anil Mess Manager', username: 'mess', email: 'mess@hostel.com', password: 'mess123', role: 'mess_manager' },
-  { id: 7, name: 'Security Guard', username: 'security', email: 'security@hostel.com', password: 'security123', role: 'security' },
-  { id: 8, name: 'Housekeeping Staff', username: 'housekeeping', email: 'house@hostel.com', password: 'house123', role: 'housekeeping' },
-  { id: 9, name: 'Maintenance Staff', username: 'maintenance', email: 'main@hostel.com', password: 'main123', role: 'maintenance_staff' },
-]
-
-// ---- Hostel configuration ----
 const HOSTEL_CONFIG = [
   { id: 1, code: 'AZ', name: 'Azad Bhawan', gender: 'male', type: 'freshers', campus: 'campus', address: 'Campus Road, JUIT Solan', triple: 0, double: 154, single: 21, wings: ['A Wing'] },
   { id: 2, code: 'SH', name: 'Shastri Bhawan', gender: 'male', type: 'seniors', campus: 'campus', address: 'Campus Road, JUIT Solan', triple: 1, double: 220, single: 124, wings: ['East Wing', 'West Wing'] },
@@ -28,19 +18,28 @@ const HOSTEL_CONFIG = [
   { id: 7, code: 'SHX', name: 'Shastri Bhawan Extension', gender: 'male', type: 'seniors', campus: 'off-campus', address: 'Off-campus, JUIT Solan', triple: 0, double: 30, single: 0, wings: ['Extension Wing'], note: 'Off-campus (₹70,000/semester sharing)' },
 ]
 
-export const hostels = HOSTEL_CONFIG.map(({ triple, double, single, wings: _wings, ...rest }) => ({
+const baseUsers = [
+  { id: 1, name: 'System Admin', username: 'admin', email: 'admin@hostel.com', password: 'admin123', role: 'admin' },
+  { id: 2, name: 'Rakesh Sharma', username: 'warden', email: 'warden@hostel.com', password: 'warden123', role: 'warden', hostelId: 2 },
+  { id: 3, name: 'Meena Verma', username: 'meena', email: 'meena@hostel.com', password: 'warden123', role: 'warden', hostelId: 5 },
+  { id: 4, name: 'Dr. S. Khatri', username: 'chief', email: 'chief@hostel.com', password: 'warden123', role: 'chief_warden' },
+  { id: 5, name: 'Ramesh Kumar', username: 'caretaker', email: 'caretaker@hostel.com', password: 'caretaker123', role: 'caretaker', hostelId: 2 },
+  { id: 6, name: 'Anil Mess Manager', username: 'mess', email: 'mess@hostel.com', password: 'mess123', role: 'mess_manager' },
+  { id: 7, name: 'Security Guard', username: 'security', email: 'security@hostel.com', password: 'security123', role: 'security' },
+  { id: 8, name: 'Housekeeping Staff', username: 'housekeeping', email: 'house@hostel.com', password: 'house123', role: 'housekeeping', hostelId: 5 },
+  { id: 9, name: 'Maintenance Staff', username: 'maintenance', email: 'main@hostel.com', password: 'main123', role: 'maintenance_staff', hostelId: 5 },
+  { id: 100, name: 'Parent User', username: 'parent', email: 'parent@hostel.com', password: 'parent123', role: 'parent', studentId: 40 },
+]
+
+const hostels = HOSTEL_CONFIG.map(({ triple, double, single, wings: _wings, ...rest }) => ({
   ...rest,
   seats: triple * 3 + double * 2 + single,
   roomCount: triple + double + single,
 }))
 
-// ---- Wings (blocks) ----
 let wingId = 1
-export const blocks = HOSTEL_CONFIG.flatMap((h) =>
-  h.wings.map((name) => ({ id: wingId++, hostelId: h.id, name }))
-)
+const blocks = HOSTEL_CONFIG.flatMap((h) => h.wings.map((name) => ({ id: wingId++, hostelId: h.id, name })))
 
-// ---- Rooms (generated from hostel config) ----
 function generateRooms() {
   const rooms = []
   let id = 1
@@ -76,9 +75,8 @@ function generateRooms() {
   return rooms
 }
 
-export const rooms = generateRooms()
+const rooms = generateRooms()
 
-// Mark some rooms with special statuses (deterministic, using modulo).
 rooms.forEach((room) => {
   if (room.id % 137 === 0) room.status = 'maintenance'
   if (room.id % 211 === 0) room.status = 'blocked'
@@ -90,61 +88,31 @@ if (firstSingle) {
   firstSingle.status = 'medical_reserved'
 }
 
-// ---- Students ----
 const MALE_FRESHERS = [
-  ['Aarav Sharma', '231030101'],
-  ['Vivaan Gupta', '231030102'],
-  ['Advait Singh', '231030103'],
-  ['Reyansh Kumar', '231030104'],
-  ['Ishaan Mehta', '231030105'],
-  ['Arjun Nair', '231030106'],
-  ['Dhruv Khanna', '231030107'],
-  ['Kabir Malhotra', '231030108'],
+  ['Aarav Sharma', '231030101'], ['Vivaan Gupta', '231030102'], ['Advait Singh', '231030103'],
+  ['Reyansh Kumar', '231030104'], ['Ishaan Mehta', '231030105'], ['Arjun Nair', '231030106'],
+  ['Dhruv Khanna', '231030107'], ['Kabir Malhotra', '231030108'],
 ]
 const MALE_SENIORS = [
-  ['Rohan Verma', '231030001'],
-  ['Karan Kapoor', '231030002'],
-  ['Siddharth Joshi', '231030003'],
-  ['Manav Batra', '231030004'],
-  ['Nikhil Rao', '231030005'],
-  ['Yash Chopra', '231030006'],
-  ['Pranav Iyer', '231030007'],
-  ['Rishabh Saxena', '231030008'],
-  ['Aditya Bansal', '231030009'],
-  ['Kunal Desai', '231030010'],
-  ['Devansh Pillai', '231030011'],
-  ['Harsh Vardhan', '231030012'],
-  ['Varun Mehra', '231030013'],
-  ['Tushar Aggarwal', '231030014'],
+  ['Rohan Verma', '231030001'], ['Karan Kapoor', '231030002'], ['Siddharth Joshi', '231030003'],
+  ['Manav Batra', '231030004'], ['Nikhil Rao', '231030005'], ['Yash Chopra', '231030006'],
+  ['Pranav Iyer', '231030007'], ['Rishabh Saxena', '231030008'], ['Aditya Bansal', '231030009'],
+  ['Kunal Desai', '231030010'], ['Devansh Pillai', '231030011'], ['Harsh Vardhan', '231030012'],
+  ['Varun Mehra', '231030013'], ['Tushar Aggarwal', '231030014'],
 ]
 const FEMALE_FRESHERS = [
-  ['Ananya Rao', '231030120'],
-  ['Priya Nair', '231030121'],
-  ['Sneha Kulkarni', '231030122'],
-  ['Ritika Sharma', '231030123'],
-  ['Tanvi Joshi', '231030124'],
-  ['Meera Patel', '231030125'],
-  ['Ishita Verma', '231030126'],
-  ['Kavya Reddy', '231030127'],
+  ['Ananya Rao', '231030120'], ['Priya Nair', '231030121'], ['Sneha Kulkarni', '231030122'],
+  ['Ritika Sharma', '231030123'], ['Tanvi Joshi', '231030124'], ['Meera Patel', '231030125'],
+  ['Ishita Verma', '231030126'], ['Kavya Reddy', '231030127'],
 ]
 const FEMALE_SENIORS = [
-  ['Raavi Aggarwal', '231031009'],
-  ['Nivi Jha', '221030106'],
-  ['Darshika Tyagi', '231030117'],
-  ['Aarya Gupta', '231030108'],
-  ['Anvesha Vijan', '231030113'],
-  ['Shreya Iyer', '221030107'],
-  ['Pooja Malhotra', '221030108'],
-  ['Riya Bansal', '221030109'],
-  ['Neha Gupta', '221030110'],
-  ['Simran Kaur', '221030111'],
-  ['Divya Menon', '221030112'],
-  ['Aditi Deshmukh', '221030113'],
-  ['Swati Singh', '221030114'],
-  ['Manisha Rao', '221030115'],
+  ['Raavi Aggarwal', '231031009'], ['Nivi Jha', '221030106'], ['Darshika Tyagi', '231030117'],
+  ['Aarya Gupta', '231030108'], ['Anvesha Vijan', '231030113'], ['Shreya Iyer', '221030107'],
+  ['Pooja Malhotra', '221030108'], ['Riya Bansal', '221030109'], ['Neha Gupta', '221030110'],
+  ['Simran Kaur', '221030111'], ['Divya Menon', '221030112'], ['Aditi Deshmukh', '221030113'],
+  ['Swati Singh', '221030114'], ['Manisha Rao', '221030115'],
 ]
 
-// Students who are applicants (not yet housed) with a pipeline status.
 const APPLICANTS = {
   'Manisha Rao': 'applied',
   'Aditi Deshmukh': 'under_review',
@@ -154,14 +122,9 @@ const APPLICANTS = {
 }
 
 function allocateRoom(hostelId) {
-  return (
-    rooms.find(
-      (r) =>
-        r.hostelId === hostelId &&
-        !r.medicalReserved &&
-        (r.status === 'available' || r.status === 'partially_occupied')
-    ) || null
-  )
+  return rooms.find(
+    (r) => r.hostelId === hostelId && !r.medicalReserved && (r.status === 'available' || r.status === 'partially_occupied')
+  ) || null
 }
 
 function makeStudents() {
@@ -216,39 +179,27 @@ function makeStudents() {
   }
 
   for (const [name, regNo] of MALE_FRESHERS) add(name, regNo, 'male', 1, 'Bachelor of Technology')
-  MALE_SENIORS.forEach(([name, regNo], i) =>
-    add(name, regNo, 'male', 2 + (i % 3), 'Bachelor of Technology')
-  )
-  for (const [name, regNo] of FEMALE_FRESHERS)
-    add(name, regNo, 'female', 1, 'Bachelor of Science')
-  FEMALE_SENIORS.forEach(([name, regNo], i) =>
-    add(name, regNo, 'female', 2 + (i % 3), 'Bachelor of Commerce')
-  )
+  MALE_SENIORS.forEach(([name, regNo], i) => add(name, regNo, 'male', 2 + (i % 3), 'Bachelor of Technology'))
+  for (const [name, regNo] of FEMALE_FRESHERS) add(name, regNo, 'female', 1, 'Bachelor of Science')
+  FEMALE_SENIORS.forEach(([name, regNo], i) => add(name, regNo, 'female', 2 + (i % 3), 'Bachelor of Commerce'))
 
   return list
 }
 
-export const students = makeStudents()
+const students = makeStudents()
 
-// student -> user records
-users.push(
-  ...students.map((s, index) => ({
-    id: s.id,
-    name: s.name,
-    username: index === 0 ? 'student' : s.name.split(' ')[0].toLowerCase(),
-    email: s.emailid,
-    password: 'student123',
-    role: 'student',
-    regNo: s.regNo,
-  }))
-)
+const studentUsers = students.map((s, index) => ({
+  id: s.id,
+  name: s.name,
+  username: index === 0 ? 'student' : s.name.split(' ')[0].toLowerCase(),
+  email: s.emailid,
+  password: 'student123',
+  role: 'student',
+  regNo: s.regNo,
+}))
 
-// ---- Wardens ----
-export const wardens = users
-  .filter((u) => ['warden', 'chief_warden', 'deputy_warden', 'assistant_warden'].includes(u.role))
-  .map(({ password: _password, ...rest }) => rest)
+const allUsers = [...baseUsers, ...studentUsers]
 
-// ---- Allocations (replaces the old application flow) ----
 let allocationSeq = 0
 function buildAllocations() {
   const list = []
@@ -271,9 +222,7 @@ function buildAllocations() {
       bedNo: room ? room.occupants.indexOf(student.id) + 1 : null,
       appliedDate: '2026-08-05',
       updatedDate: '2026-08-08',
-      history: [
-        { status: 'applied', date: '2026-08-05', by: student.name, note: 'Application submitted' },
-      ],
+      history: [{ status: 'applied', date: '2026-08-05', by: student.name, note: 'Application submitted' }],
       ...extra,
     })
   }
@@ -291,10 +240,9 @@ function buildAllocations() {
   return list
 }
 
-export const allocations = buildAllocations()
+const allocations = buildAllocations()
 
-// ---- Complaints ----
-export const complaints = [
+const complaints = [
   { id: 1, complainNumber: 473906789, studentId: 40, studentName: 'Raavi Aggarwal', complaintType: 'Electrical', complaintDetails: 'LED light not working in my room', complaintDoc: null, complaintStatus: 'In Process', registrationDate: '2026-08-12 09:06:16' },
   { id: 2, complainNumber: 296166607, studentId: 41, studentName: 'Nivi Jha', complaintType: 'Plumbing', complaintDetails: 'Tap leakage in washroom', complaintDoc: null, complaintStatus: 'In Process', registrationDate: '2026-08-10 11:38:48' },
   { id: 3, complainNumber: 950749466, studentId: 43, studentName: 'Aarya Gupta', complaintType: 'Mess', complaintDetails: 'Food quality not consistent', complaintDoc: null, complaintStatus: 'Closed', registrationDate: '2026-08-04 18:22:23' },
@@ -303,22 +251,20 @@ export const complaints = [
   { id: 6, complainNumber: 883920114, studentId: 33, studentName: 'Ananya Rao', complaintType: 'Housekeeping', complaintDetails: 'Room not cleaned today', complaintDoc: null, complaintStatus: 'New', registrationDate: '2026-08-14 08:15:00' },
 ]
 
-export const complaintHistory = [
-  { id: 1, complaintid: 1, compalintStatus: 'In Process', complaintRemark: 'Electrician assigned.', postingDate: '2026-08-12 12:00:00' },
-  { id: 2, complaintid: 3, compalintStatus: 'In Process', complaintRemark: 'Mess committee notified.', postingDate: '2026-08-05 09:30:00' },
-  { id: 3, complaintid: 3, compalintStatus: 'Closed', complaintRemark: 'Resolved after feedback.', postingDate: '2026-08-07 12:00:00' },
-  { id: 4, complaintid: 5, compalintStatus: 'In Process', complaintRemark: 'Technician assigned.', postingDate: '2026-08-03 08:15:00' },
+const complaintHistory = [
+  { id: 1, complaintId: 1, complaintStatus: 'In Process', remark: 'Electrician assigned.', postingDate: '2026-08-12 12:00:00' },
+  { id: 2, complaintId: 3, complaintStatus: 'In Process', remark: 'Mess committee notified.', postingDate: '2026-08-05 09:30:00' },
+  { id: 3, complaintId: 3, complaintStatus: 'Closed', remark: 'Resolved after feedback.', postingDate: '2026-08-07 12:00:00' },
+  { id: 4, complaintId: 5, complaintStatus: 'In Process', remark: 'Technician assigned.', postingDate: '2026-08-03 08:15:00' },
 ]
 
-// ---- Maintenance tickets ----
-export const maintenanceTickets = [
+const maintenanceTickets = [
   { id: 1, studentId: 40, studentName: 'Raavi Aggarwal', hostelId: 5, roomNo: 'GS-03-001', category: 'Electrical', subcategory: 'Fan not working', description: 'Ceiling fan wobbles and makes noise', priority: 'medium', status: 'reported', assignedTo: 'Technician T1', expectedDate: '2026-08-16', resolvedDate: null, createdDate: '2026-08-14', rating: null, remarks: '' },
   { id: 2, studentId: 41, studentName: 'Nivi Jha', hostelId: 5, roomNo: 'GS-04-010', category: 'Plumbing', subcategory: 'Tap leakage', description: 'Wash basin tap leaks continuously', priority: 'high', status: 'in_progress', assignedTo: 'Plumber P1', expectedDate: '2026-08-15', resolvedDate: null, createdDate: '2026-08-12', rating: null, remarks: 'Spare part ordered' },
   { id: 3, studentId: 43, studentName: 'Aarya Gupta', hostelId: 5, roomNo: 'GS-02-020', category: 'Room', subcategory: 'Door problem', description: 'Main door latch broken', priority: 'low', status: 'resolved', assignedTo: 'Carpenter C1', expectedDate: '2026-08-10', resolvedDate: '2026-08-11', createdDate: '2026-08-08', rating: 4, remarks: 'Replaced latch' },
 ]
 
-// ---- Inventory ----
-export const inventory = [
+const inventory = [
   { id: 1, roomId: 1, hostelId: 5, item: 'Box bed', quantity: 2, condition: 'Good', status: 'new', assignedTo: 'Student' },
   { id: 2, roomId: 1, hostelId: 5, item: 'Mattress', quantity: 2, condition: 'Good', status: 'good', assignedTo: 'Student' },
   { id: 3, roomId: 1, hostelId: 5, item: 'Study table', quantity: 2, condition: 'Good', status: 'good', assignedTo: 'Student' },
@@ -330,15 +276,14 @@ export const inventory = [
   { id: 9, roomId: 100, hostelId: 2, item: 'Chair', quantity: 2, condition: 'Damaged', status: 'under_repair', assignedTo: 'Student' },
 ]
 
-// ---- Housekeeping ----
-export const housekeeping = [
-  { id: 1, taskType: 'Room cleaning', area: 'GS-03-001', assignedTo: 'Staff H1', schedule: '2026-08-15', status: 'pending', inspected: false, rating: null },
-  { id: 2, taskType: 'Corridor cleaning', area: 'Senior Wing 3rd floor', assignedTo: 'Staff H2', schedule: '2026-08-15', status: 'in_progress', inspected: false, rating: null },
-  { id: 3, taskType: 'Bathroom cleaning', area: 'East Wing washroom', assignedTo: 'Staff H1', schedule: '2026-08-14', status: 'completed', inspected: true, rating: 4 },
+const housekeeping = [
+  { id: 1, hostelId: 5, taskType: 'Room cleaning', area: 'GS-03-001', assignedTo: 'Staff H1', schedule: '2026-08-15', status: 'pending', inspected: false, rating: null },
+  { id: 2, hostelId: 5, taskType: 'Corridor cleaning', area: 'Senior Wing 3rd floor', assignedTo: 'Staff H2', schedule: '2026-08-15', status: 'in_progress', inspected: false, rating: null },
+  { id: 3, hostelId: 2, taskType: 'Bathroom cleaning', area: 'East Wing washroom', assignedTo: 'Staff H1', schedule: '2026-08-14', status: 'completed', inspected: true, rating: 4 },
+  { id: 4, hostelId: 1, taskType: 'Common room cleaning', area: 'A Wing lounge', assignedTo: 'Staff H3', schedule: '2026-08-16', status: 'pending', inspected: false, rating: null },
 ]
 
-// ---- Mess ----
-export const messMenu = [
+const messMenu = [
   { id: 1, day: 'Monday', breakfast: 'Poha', lunch: 'Rajma Rice', snacks: 'Tea & Biscuits', dinner: 'Chicken Curry', milk: 'Milk' },
   { id: 2, day: 'Tuesday', breakfast: 'Aloo Paratha', lunch: 'Dal Tadka', snacks: 'Samosa', dinner: 'Veg Biryani', milk: 'Milk' },
   { id: 3, day: 'Wednesday', breakfast: 'Upma', lunch: 'Chole Rice', snacks: 'Fruit', dinner: 'Butter Paneer', milk: 'Milk' },
@@ -348,127 +293,105 @@ export const messMenu = [
   { id: 7, day: 'Sunday', breakfast: 'Chole Bhature', lunch: 'Fried Rice', snacks: 'Ice cream', dinner: 'Curd Rice', milk: 'Milk' },
 ]
 
-export const mess = {
-  feedback: [
-    { id: 1, studentId: 40, date: '2026-08-13', taste: 4, quantity: 4, hygiene: 4, variety: 3, temperature: 4, overall: 4, comment: 'Good, keep it up' },
-    { id: 2, studentId: 12, date: '2026-08-13', taste: 3, quantity: 2, hygiene: 3, variety: 3, temperature: 3, overall: 3, comment: 'Dinner quantity less' },
-  ],
-  complaints: [
-    { id: 1, studentId: 43, date: '2026-08-11', subject: 'Food quality', details: 'Paneer tasted stale', status: 'resolved' },
-  ],
-  inspections: [
-    { id: 1, date: '2026-08-10', area: 'Kitchen', hygiene: 5, remarks: 'All clean' },
-    { id: 2, date: '2026-08-06', area: 'Dining Hall', hygiene: 4, remarks: 'Minor floor stains' },
-  ],
-}
+const messFeedback = [
+  { id: 1, studentId: 40, date: '2026-08-13', taste: 4, quantity: 4, hygiene: 4, variety: 3, temperature: 4, overall: 4, comment: 'Good, keep it up' },
+  { id: 2, studentId: 12, date: '2026-08-13', taste: 3, quantity: 2, hygiene: 3, variety: 3, temperature: 3, overall: 3, comment: 'Dinner quantity less' },
+]
 
-// ---- Fees ----
-export const fees = students
-  .filter((s) => s.active)
-  .map((s, index) => ({
-    id: index + 1,
-    studentId: s.id,
-    studentName: s.name,
-    amount: s.feespm,
-    dueDate: '2026-09-01',
-    paidDate: index % 3 === 0 ? '2026-08-10' : null,
-    status: index % 3 === 0 ? 'paid' : index % 3 === 1 ? 'due' : 'overdue',
-  }))
+const messComplaints = [
+  { id: 1, studentId: 43, date: '2026-08-11', subject: 'Food quality', details: 'Paneer tasted stale', status: 'resolved' },
+]
 
-// ---- Attendance ----
-export const attendance = students
-  .filter((s) => s.active)
-  .slice(0, 20)
-  .map((s, index) => ({
-    id: index + 1,
-    studentId: s.id,
-    date: '2026-08-14',
-    status: index % 5 === 2 ? 'absent' : index % 7 === 3 ? 'leave' : 'present',
-  }))
+const messInspections = [
+  { id: 1, date: '2026-08-10', area: 'Kitchen', hygiene: 5, remarks: 'All clean' },
+  { id: 2, date: '2026-08-06', area: 'Dining Hall', hygiene: 4, remarks: 'Minor floor stains' },
+]
 
-// ---- Entry / exit (biometric) ----
-export const entryExit = [
+const activeStudents = students.filter((s) => s.active)
+
+const fees = activeStudents.map((s, index) => ({
+  id: index + 1,
+  studentId: s.id,
+  studentName: s.name,
+  amount: s.feespm,
+  dueDate: '2026-09-01',
+  paidDate: index % 3 === 0 ? '2026-08-10' : null,
+  status: index % 3 === 0 ? 'paid' : index % 3 === 1 ? 'due' : 'overdue',
+}))
+
+const attendance = activeStudents.slice(0, 20).map((s, index) => ({
+  id: index + 1,
+  studentId: s.id,
+  date: '2026-08-14',
+  status: index % 5 === 2 ? 'absent' : index % 7 === 3 ? 'leave' : 'present',
+}))
+
+const entryExit = [
   { id: 1, studentId: 10, date: '2026-08-14', time: '18:05', type: 'exit', gate: 'Main Gate', status: 'normal', lateMinutes: 0, linkedOutpassId: 1 },
   { id: 2, studentId: 10, date: '2026-08-14', time: '20:12', type: 'entry', gate: 'Main Gate', status: 'normal', lateMinutes: 0, linkedOutpassId: null },
   { id: 3, studentId: 40, date: '2026-08-14', time: '21:45', type: 'entry', gate: 'Girls Hostel Gate', status: 'late', lateMinutes: 15, linkedOutpassId: null },
   { id: 4, studentId: 41, date: '2026-08-14', time: '22:20', type: 'entry', gate: 'Girls Hostel Gate', status: 'violation', lateMinutes: 50, linkedOutpassId: null },
 ]
 
-// ---- Out-passes ----
-export const outpasses = [
+const outpasses = [
   { id: 1, studentId: 10, studentName: 'Aarav Sharma', passNo: 1, destination: 'Solan', reason: 'Family visit', departure: '2026-08-10 09:00', expectedReturn: '2026-08-10 18:00', actualReturn: '2026-08-10 17:45', parentApproved: true, wardenApproved: true, status: 'completed' },
   { id: 2, studentId: 40, studentName: 'Raavi Aggarwal', passNo: 1, destination: 'Shimla', reason: 'Weekend trip', departure: '2026-08-14 10:00', expectedReturn: '2026-08-14 20:00', actualReturn: null, parentApproved: true, wardenApproved: true, status: 'active' },
 ]
 
-students.forEach((s) => {
-  s.outpassUsed = outpasses.filter(
-    (o) => o.studentId === s.id && ['approved', 'active', 'completed'].includes(o.status)
-  ).length
-})
+for (const s of students) {
+  s.outpassUsed = outpasses.filter((o) => o.studentId === s.id && ['approved', 'active', 'completed'].includes(o.status)).length
+}
 
-// ---- Leaves ----
-export const leaves = [
+const leaves = [
   { id: 1, studentId: 40, studentName: 'Raavi Aggarwal', from: '2026-08-20', to: '2026-08-22', reason: 'Family function', destination: 'Shimla', parentApproved: false, status: 'pending' },
   { id: 2, studentId: 43, studentName: 'Aarya Gupta', from: '2026-08-18', to: '2026-08-19', reason: 'Medical appointment', destination: 'Solan', parentApproved: true, status: 'approved' },
   { id: 3, studentId: 44, studentName: 'Anvesha Vijan', from: '2026-08-15', to: '2026-08-15', reason: 'Personal work', destination: 'Home', parentApproved: true, status: 'rejected' },
 ]
 
-// ---- Visitors ----
-export const visitors = [
+const visitors = [
   { id: 1, studentId: 40, studentName: 'Raavi Aggarwal', visitorName: 'Raj Aggarwal', relation: 'Brother', date: '2026-08-12', inTime: '14:00', outTime: '16:30', purpose: 'Visit', status: 'checked-in' },
   { id: 2, studentId: 41, studentName: 'Nivi Jha', visitorName: 'Suman Jha', relation: 'Mother', date: '2026-08-09', inTime: '11:00', outTime: null, purpose: 'Visit', status: 'pending' },
 ]
 
-// ---- Wi-Fi ----
-export const wifi = [
+const wifi = [
   { id: 1, hostelId: 2, accessPoint: 'SH-AP1', status: 'online', downtime: 0, issues: [] },
   { id: 2, hostelId: 5, accessPoint: 'GS-AP1', status: 'degraded', downtime: 45, issues: ['Slow bandwidth'] },
   { id: 3, hostelId: 5, accessPoint: 'GS-AP2', status: 'offline', downtime: 120, issues: ['Down since morning'] },
 ]
 
-// ---- Medical ----
-export const medical = {
-  dispensary: { doctor: 'Dr. Kavita Nair', nurse: 'Nurse Renu', contactno: '01792-227700', ambulance: '01792-227701' },
-  incidents: [
-    { id: 1, studentId: 13, date: '2026-08-12', type: 'Medical', description: 'High fever, taken to dispensary', status: 'recorded', parentNotified: true },
-  ],
-}
+const medicalIncidents = [
+  { id: 1, studentId: 13, date: '2026-08-12', type: 'Medical', description: 'High fever, taken to dispensary', status: 'recorded', parentNotified: true },
+]
 
-// ---- Committee ----
-export const committee = {
-  members: [
-    { id: 1, name: 'Chief Warden', role: 'Chairperson' },
-    { id: 2, name: 'Mess In-charge', role: 'Member' },
-    { id: 3, name: 'Student Representative', role: 'Member' },
-    { id: 4, name: 'Caretaker', role: 'Member' },
-  ],
-  meetings: [
-    { id: 1, date: '2026-08-20', agenda: 'Mess menu review, maintenance backlog', decisions: ['Weekly menu to be displayed'], actionItems: [{ id: 1, item: 'Display menu', responsible: 'Mess In-charge', deadline: '2026-08-18', status: 'open' }] },
-  ],
-}
+const committeeMembers = [
+  { id: 1, name: 'Chief Warden', role: 'Chairperson' },
+  { id: 2, name: 'Mess In-charge', role: 'Member' },
+  { id: 3, name: 'Student Representative', role: 'Member' },
+  { id: 4, name: 'Caretaker', role: 'Member' },
+]
 
-// ---- Audit logs ----
-export const auditLogs = [
+const committeeMeetings = [
+  { id: 1, date: '2026-08-20', agenda: 'Mess menu review, maintenance backlog', decisions: ['Weekly menu to be displayed'], actionItems: [{ id: 1, item: 'Display menu', responsible: 'Mess In-charge', deadline: '2026-08-18', status: 'open' }] },
+]
+
+const auditLogs = [
   { id: 1, actor: 'Rakesh Sharma', action: 'Allocated room', entity: 'Allocation', target: 'Kabir Malhotra', before: 'Approved', after: 'Allocated', timestamp: '2026-08-12 10:42:00' },
   { id: 2, actor: 'System Admin', action: 'Updated hostel', entity: 'Hostel', target: 'Shastri Bhawan', before: 'capacity 567', after: 'capacity 567', timestamp: '2026-08-11 09:00:00' },
 ]
 
-// ---- Notices ----
-export const notices = [
+const notices = [
   { id: 1, title: 'Mess timings changed', body: 'Dinner will now be served until 8:30 PM.', category: 'Mess', audience: 'all', date: '2026-08-13', expiryDate: null, priority: 'normal', active: true },
   { id: 2, title: 'Hostel fee deadline', body: 'Last date to pay hostel fees is 1st September.', category: 'Fees', audience: 'students', date: '2026-08-10', expiryDate: null, priority: 'high', active: true },
   { id: 3, title: 'Girls hostel in-time', body: 'All girl hostellers must be inside by 9:30 PM (winter 7:30 PM).', category: 'Timings', audience: 'girls', date: '2026-08-08', expiryDate: null, priority: 'normal', active: true },
 ]
 
-// ---- Notifications ----
-export const notifications = [
+const notifications = [
   { id: 1, title: 'New maintenance ticket', description: 'Raavi Aggarwal reported a Fan issue (GS-03-001).', read: false, date: '2026-08-14' },
   { id: 2, title: 'Leave request', description: 'Raavi Aggarwal requested leave (Aug 20-22).', read: false, date: '2026-08-13' },
   { id: 3, title: 'Application approved', description: 'Kabir Malhotra is awaiting room allocation.', read: true, date: '2026-08-12' },
 ]
 
-// ---- Settings ----
-export const settings = {
+const settings = {
   hostelName: 'JUIT Hostels',
   feeDeadline: '2026-09-01',
   maintenanceDay: 'Sunday',
@@ -480,16 +403,108 @@ export const settings = {
   outpassTotal: 12,
 }
 
-// ---- States ----
-export const states = [
-  'Andhra Pradesh',
-  'Delhi (NCT)',
-  'Himachal Pradesh',
-  'Karnataka',
-  'Maharashtra',
-  'Punjab',
-  'Rajasthan',
-  'Tamil Nadu',
-  'Uttar Pradesh',
-  'West Bengal',
+// ---------------------------------------------------------------------------
+
+const SEQUENCE_MODELS = [
+  'User', 'Hostel', 'Block', 'Room', 'Student', 'Allocation', 'Complaint',
+  'ComplaintAction', 'MaintenanceTicket', 'InventoryItem', 'HousekeepingTask',
+  'Fee', 'Attendance', 'EntryExit', 'Outpass', 'Notice', 'Leave', 'Visitor',
+  'MessMenu', 'MessFeedback', 'MessComplaint', 'MessInspection',
+  'WifiAccessPoint', 'MedicalDispensary', 'MedicalIncident', 'CommitteeMember',
+  'CommitteeMeeting', 'AuditLog', 'Notification', 'Setting',
 ]
+
+export async function resetSequences(prisma) {
+  for (const model of SEQUENCE_MODELS) {
+    await prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"${model}"', 'id'), COALESCE((SELECT MAX(id) FROM "${model}"), 1))`
+    )
+  }
+}
+
+export async function seedDatabase(prisma) {
+  const hash = (pw) => bcrypt.hashSync(pw, 4)
+
+  await prisma.$transaction([
+    prisma.complaintAction.deleteMany(),
+    prisma.complaint.deleteMany(),
+    prisma.allocation.deleteMany(),
+    prisma.maintenanceTicket.deleteMany(),
+    prisma.fee.deleteMany(),
+    prisma.attendance.deleteMany(),
+    prisma.entryExit.deleteMany(),
+    prisma.outpass.deleteMany(),
+    prisma.leave.deleteMany(),
+    prisma.visitor.deleteMany(),
+    prisma.messFeedback.deleteMany(),
+    prisma.messComplaint.deleteMany(),
+    prisma.medicalIncident.deleteMany(),
+    prisma.room.deleteMany(),
+    prisma.block.deleteMany(),
+    prisma.student.deleteMany(),
+    prisma.hostel.deleteMany(),
+    prisma.user.deleteMany(),
+    prisma.messMenu.deleteMany(),
+    prisma.messInspection.deleteMany(),
+    prisma.inventoryItem.deleteMany(),
+    prisma.housekeepingTask.deleteMany(),
+    prisma.wifiAccessPoint.deleteMany(),
+    prisma.medicalDispensary.deleteMany(),
+    prisma.committeeMember.deleteMany(),
+    prisma.committeeMeeting.deleteMany(),
+    prisma.auditLog.deleteMany(),
+    prisma.notice.deleteMany(),
+    prisma.notification.deleteMany(),
+    prisma.setting.deleteMany(),
+  ])
+
+  await prisma.hostel.createMany({ data: hostels })
+  await prisma.block.createMany({ data: blocks })
+  await prisma.room.createMany({
+    data: rooms.map(({ occupants: _occupants, ...room }) => room),
+  })
+  await prisma.user.createMany({
+    data: allUsers.map(({ password, ...u }) => ({ ...u, password: hash(password) })),
+  })
+  await prisma.student.createMany({ data: students })
+  await prisma.allocation.createMany({ data: allocations })
+  await prisma.complaint.createMany({ data: complaints })
+  await prisma.complaintAction.createMany({ data: complaintHistory })
+  await prisma.maintenanceTicket.createMany({ data: maintenanceTickets })
+  await prisma.inventoryItem.createMany({ data: inventory })
+  await prisma.housekeepingTask.createMany({ data: housekeeping })
+  await prisma.messMenu.createMany({ data: messMenu })
+  await prisma.messFeedback.createMany({ data: messFeedback })
+  await prisma.messComplaint.createMany({ data: messComplaints })
+  await prisma.messInspection.createMany({ data: messInspections })
+  await prisma.fee.createMany({ data: fees })
+  await prisma.attendance.createMany({ data: attendance })
+  await prisma.entryExit.createMany({ data: entryExit })
+  await prisma.outpass.createMany({ data: outpasses })
+  await prisma.leave.createMany({ data: leaves })
+  await prisma.visitor.createMany({ data: visitors })
+  await prisma.wifiAccessPoint.createMany({ data: wifi })
+  await prisma.medicalDispensary.create({ data: { doctor: 'Dr. Kavita Nair', nurse: 'Nurse Renu', contactno: '01792-227700', ambulance: '01792-227701' } })
+  await prisma.medicalIncident.createMany({ data: medicalIncidents })
+  await prisma.committeeMember.createMany({ data: committeeMembers })
+  await prisma.committeeMeeting.createMany({ data: committeeMeetings })
+  await prisma.auditLog.createMany({ data: auditLogs })
+  await prisma.notice.createMany({ data: notices })
+  await prisma.notification.createMany({ data: notifications })
+  await prisma.setting.create({ data: settings })
+
+  await resetSequences(prisma)
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const prisma = new PrismaClient()
+  seedDatabase(prisma)
+    .then(() => {
+      console.log(`Seeded: ${hostels.length} hostels, ${rooms.length} rooms, ${students.length} students, ${allUsers.length} users, ${allocations.length} allocations`)
+    })
+    .catch((error) => {
+      console.error(error)
+      process.exit(1)
+    })
+    .finally(() => prisma.$disconnect())
+}

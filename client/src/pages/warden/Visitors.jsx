@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react'
 import { App as AntApp, Button, Card, Space, Tabs, Tag } from 'antd'
 import { CheckOutlined, LogoutOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
+import { useTableFilter } from '../../hooks/useTableFilter'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
+import TableSearchBar from '../../components/TableSearchBar'
 import { formatDate } from '../../utils/format'
 
 const TABS = [
@@ -37,6 +39,12 @@ export default function Visitors() {
     const filtered = data.filter((v) => hostelStudentIds.has(v.studentId))
     return tab === 'all' ? filtered : filtered.filter((v) => v.status === tab)
   }, [data, tab, hostelStudentIds])
+
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, [
+    'visitorName',
+    'studentName',
+    'relation',
+  ])
 
   const updateStatus = async (visitor, status) => {
     try {
@@ -89,7 +97,8 @@ export default function Visitors() {
       <PageHeader title="Visitors" subtitle="Manage the visitor log for your hostel." />
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
-        <DataTable rowKey="id" loading={loading} dataSource={scoped} columns={columns} />
+        <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />
+        <DataTable rowKey="id" loading={loading} dataSource={searchFiltered} columns={columns} />
       </Card>
     </>
   )

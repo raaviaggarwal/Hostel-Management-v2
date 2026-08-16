@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { resourceApi } from '../../api/client'
-import { useAuth } from '../../context/AuthContext'
+import { useAuth } from '../../context/auth'
 import PageHeader from '../../components/PageHeader'
 import StatusTag from '../../components/StatusTag'
 
