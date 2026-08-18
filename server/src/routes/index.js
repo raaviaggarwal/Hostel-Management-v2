@@ -1850,7 +1850,7 @@ router.post('/fees', async (req, res) => {
       studentId: num(body.studentId),
       studentName: body.studentName || student?.name || '',
       amount: body.amount != null ? num(body.amount) : student ? await studentFeeAmount(student) : 80000,
-      dueDate: body.dueDate,
+      dueDate: body.dueDate || '2026-09-01',
       paidDate: null,
       status: 'due',
     },

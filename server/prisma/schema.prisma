@@ -188,7 +188,7 @@ model Fee {
   studentId   Int
   studentName String
   amount      Int
-  dueDate     String
+  dueDate     String?
   paidDate    String?
   status      String
   student     Student @relation(fields: [studentId], references: [id])

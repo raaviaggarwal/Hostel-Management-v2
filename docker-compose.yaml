@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:17
+    restart: always
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: hostel_management
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    restart: always
+    

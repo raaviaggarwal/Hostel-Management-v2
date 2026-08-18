@@ -227,7 +227,8 @@ describe('allocation workflow', () => {
     const allocated = await post(`/api/allocations/${allocation.id}/allocate`, {})
     expect(allocated.status).toBe(200)
     expect(allocated.body.status).toBe('allocated')
-    expect(simran.roomno).toBe(allocated.body.roomNo)
+    const updated = await prisma.student.findUnique({ where: { id: simran.id } })
+    expect(updated.roomno).toBe(allocated.body.roomNo)
   })
 
   it('transfers an occupied allocation to another room', async () => {

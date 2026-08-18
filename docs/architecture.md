@@ -75,7 +75,7 @@ server
 ├── prisma/
 │   ├── schema.prisma      # all models (User, Hostel, Block, Room, Student, …)
 │   ├── seed.js            # seedDatabase(prisma) + resetSequences(prisma), direct-run guard
-│   └── migrations/        # 20260816000000_init (initial schema) + migration_lock.toml
+│   └── migrations/        # 20260816000000_init + 20260818042235_fee_due_date_optional + migration_lock.toml
 ├── src/
 │   ├── index.js           # entry: loads dotenv, listens on PORT || 5000
 │   ├── app.js             # createApp(): cors, json({limit:'2mb'}), /api router, error/404 handlers
@@ -85,7 +85,7 @@ server
 │       └── index.js       # the whole REST API (all ~120 endpoints)
 ├── tests/
 │   └── api.test.js        # supertest API tests (68 tests, reseeds DB per test)
-├── vitest.config.js       # pool: 'threads', environment node, testTimeout 60000
+├── vitest.config.js       # pool: 'threads', environment node, test/hook timeout 60000
 ├── .env / .env.example    # DATABASE_URL, JWT_SECRET, PORT
 └── package.json           # dev/start/migrate/seed/test/lint scripts
 ```

@@ -91,7 +91,7 @@ if (firstSingle) {
 const MALE_FRESHERS = [
   ['Aarav Sharma', '231030101'], ['Vivaan Gupta', '231030102'], ['Advait Singh', '231030103'],
   ['Reyansh Kumar', '231030104'], ['Ishaan Mehta', '231030105'], ['Arjun Nair', '231030106'],
-  ['Dhruv Khanna', '231030107'], ['Kabir Malhotra', '231030108'],
+  ['Dhruv Khanna', '231030107'], ['Kabir Malhotra', '231030119'],
 ]
 const MALE_SENIORS = [
   ['Rohan Verma', '231030001'], ['Karan Kapoor', '231030002'], ['Siddharth Joshi', '231030003'],
