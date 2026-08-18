@@ -245,3 +245,11 @@ Working notes:
   portals, nav and home routes.
 - `client/src/api/client.js` — the only place in the client that talks to `/api`.
 - `docs/` — this documentation; keep it updated as the system evolves.
+
+## Known audit findings
+
+- `npm audit` reports 3 high-severity findings, all in the dev-only Prisma CLI
+  chain (`@prisma/config` -> `deepmerge-ts`). `npm audit --omit=dev` reports 0
+  vulnerabilities; production dependencies are clean.
+- There is no non-breaking fix (the only "fix" is a breaking Prisma downgrade).
+  Do **not** run `npm audit fix --force`. Revisit after a Prisma 7 upgrade.
