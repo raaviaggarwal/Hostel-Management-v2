@@ -40,7 +40,9 @@ Run server commands from `server/` (server must see a valid `DATABASE_URL` in
 **Verification gate**: after any change run the client gate
 (`npm run test`, `npm run lint`, `npm run build` in `client/`) and the server
 gate (`npm run lint` in `server/`, plus `npm run test` when the database is
-available). All must pass before considering a task done.
+available). All must pass before considering a task done. GitHub Actions
+(`.github/workflows/ci.yml`) runs the same gates on every push to `main` and on
+PRs (client job, plus a server job with a Postgres 17 service container).
 
 ## Production mode
 
