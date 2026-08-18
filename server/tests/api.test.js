@@ -171,6 +171,39 @@ describe('warden scope', () => {
     expect(data.charts.complaintsByStatus).toBeTruthy()
     expect(data.charts.blockOccupancy.length).toBeGreaterThan(0)
   })
+
+  it('lets a hostel warden see a fresh application that prefers their hostel', async () => {
+    const warden = await userByUsername('warden')
+    const tushar = await byName('Tushar Aggarwal')
+    const created = await post('/api/allocations', { hostelPrefs: [2] }, auth('student', tushar.id))
+    expect(created.status).toBe(201)
+    const list = await get('/api/allocations', auth('warden', warden.id))
+    const mine = list.find((a) => a.id === created.body.id)
+    expect(mine).toBeTruthy()
+    expect(mine.status).toBe('applied')
+  })
+
+  it('lets a chief warden see all allocations', async () => {
+    const chief = await userByUsername('chief')
+    const list = await get('/api/allocations', auth('chief_warden', chief.id))
+    expect(list.length).toBeGreaterThan(0)
+    expect(list.some((a) => a.studentName === 'Manisha Rao')).toBe(true)
+    expect(list.some((a) => a.studentName === 'Tushar Aggarwal')).toBe(true)
+  })
+
+  it('returns chief warden dashboard stats across hostels', async () => {
+    const chief = await userByUsername('chief')
+    const data = await get('/api/warden/dashboard', auth('chief_warden', chief.id))
+    expect(data.stats.totalRooms).toBeGreaterThan(0)
+    expect(data.stats.pendingAllocations).toBeGreaterThan(0)
+    expect(data.stats.waitlisted).toBeGreaterThan(0)
+  })
+
+  it('lets a chief warden see all housekeeping tasks', async () => {
+    const chief = await userByUsername('chief')
+    const list = await get('/api/housekeeping', auth('chief_warden', chief.id))
+    expect(list.length).toBeGreaterThan(0)
+  })
 })
 
 describe('allocation workflow', () => {

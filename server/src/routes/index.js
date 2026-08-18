@@ -326,23 +326,24 @@ router.get('/warden/dashboard', async (req, res) => {
   const user = await wardenUser(req)
   if (!user) return fail(res, 'Unauthorized', 401)
   const hostelId = user.hostelId
+  const roomWhere = hostelId ? { hostelId } : {}
   const [rooms, students, allocations, complaints, outpasses, leaves, blocks] = await Promise.all([
-    prisma.room.findMany({ where: { hostelId } }),
-    prisma.student.findMany({ where: { hostelId } }),
+    prisma.room.findMany({ where: roomWhere }),
+    prisma.student.findMany({ where: roomWhere }),
     prisma.allocation.findMany(),
     prisma.complaint.findMany(),
     prisma.outpass.findMany(),
     prisma.leave.findMany(),
-    prisma.block.findMany({ where: { hostelId } }),
+    prisma.block.findMany({ where: roomWhere }),
   ])
   const occ = await roomOccupancyMap()
   const studentIds = new Set(students.map((s) => s.id))
   const occupiedRooms = rooms.filter((r) => (occ.get(r.id) || []).length > 0).length
   const totalBeds = rooms.reduce((sum, r) => sum + r.seater, 0)
   const usedBeds = rooms.reduce((sum, r) => sum + (occ.get(r.id) || []).length, 0)
-  const wardenAllocations = allocations.filter(
-    (a) => a.hostelId === hostelId || (a.hostelPrefs || []).includes(hostelId)
-  )
+  const wardenAllocations = hostelId
+    ? allocations.filter((a) => a.hostelId === hostelId || (a.hostelPrefs || []).includes(hostelId))
+    : allocations
   const scopedComplaints = complaints.filter((c) => studentIds.has(c.studentId))
   const scopedLeaves = leaves.filter((l) => studentIds.has(l.studentId))
 
@@ -823,7 +824,7 @@ router.get('/allocations', async (req, res) => {
   const warden = await wardenUser(req)
   const admin = await adminUser(req)
   let list = await prisma.allocation.findMany({ orderBy: { id: 'asc' } })
-  if (warden && !admin) {
+  if (warden && !admin && warden.hostelId) {
     const scope = warden.hostelId
     list = list.filter((a) => a.hostelId === scope || (a.hostelPrefs || []).includes(scope))
   }
@@ -1159,6 +1160,10 @@ router.get('/leaves', async (req, res) => {
     const list = await prisma.leave.findMany({ orderBy: { id: 'asc' } })
     return ok(res, list)
   }
+  if (!warden.hostelId) {
+    const list = await prisma.leave.findMany({ orderBy: { id: 'asc' } })
+    return ok(res, list)
+  }
   const students = await prisma.student.findMany({ where: { hostelId: warden.hostelId } })
   const ids = new Set(students.map((s) => s.id))
   const list = await prisma.leave.findMany({ orderBy: { id: 'asc' } })
@@ -1213,7 +1218,7 @@ router.post('/leaves/:id/decision', async (req, res) => {
 router.get('/outpasses', async (req, res) => {
   const warden = await wardenUser(req)
   const list = await prisma.outpass.findMany({ orderBy: { id: 'asc' } })
-  if (!warden) return ok(res, list)
+  if (!warden || !warden.hostelId) return ok(res, list)
   const students = await prisma.student.findMany({ where: { hostelId: warden.hostelId } })
   const ids = new Set(students.map((s) => s.id))
   return ok(res, list.filter((o) => ids.has(o.studentId)))
@@ -1420,7 +1425,7 @@ router.get('/maintenance', async (req, res) => {
   const status = req.query.status
   const scope = (await wardenUser(req)) || (await staffHostelUser(req))
   let list = await prisma.maintenanceTicket.findMany({ orderBy: { id: 'asc' } })
-  if (scope) {
+  if (scope?.hostelId) {
     const students = await prisma.student.findMany({ where: { hostelId: scope.hostelId } })
     const ids = new Set(students.map((s) => s.id))
     list = list.filter((t) => ids.has(t.studentId))
@@ -1551,7 +1556,7 @@ router.delete('/inventory/:id', async (req, res) => {
 router.get('/housekeeping', async (req, res) => {
   const scope = (await wardenUser(req)) || (await staffHostelUser(req))
   let list = await prisma.housekeepingTask.findMany({ orderBy: { id: 'asc' } })
-  if (scope) list = list.filter((t) => String(t.hostelId) === String(scope.hostelId))
+  if (scope?.hostelId) list = list.filter((t) => String(t.hostelId) === String(scope.hostelId))
   return ok(res, [...list].sort((a, b) => b.id - a.id))
 })
 
@@ -1908,7 +1913,7 @@ router.get('/warden/attendance/register', async (req, res) => {
   if (!user) return fail(res, 'Unauthorized', 401)
   const date = req.query.date
   const blockId = req.query.blockId
-  let students = await prisma.student.findMany({ where: { hostelId: user.hostelId }, orderBy: { id: 'asc' } })
+  let students = await prisma.student.findMany({ where: user.hostelId ? { hostelId: user.hostelId } : {}, orderBy: { id: 'asc' } })
   if (blockId) students = students.filter((s) => String(s.blockId) === blockId)
   const records = []
   for (const s of students) {
