@@ -13,7 +13,7 @@
     "seed": "node prisma/seed.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "node --check src/app.js && node --check src/auth.js && node --check src/index.js && node --check src/prisma.js && node --check src/routes/index.js && node --check prisma/seed.js",
+    "lint": "node --check src/app.js && node --check src/auth.js && node --check src/index.js && node --check src/prisma.js && node --check src/routes/index.js && node --check prisma/seed.js && node --check tests/api.test.js && node --check vitest.config.js",
     "build": "node --check src/index.js"
   },
   "prisma": {
@@ -25,6 +25,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.6.2",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.2"
   },

@@ -37,5 +37,5 @@ to work on it.
 
 - **Verification**: after every change run the client gate (`npm run test`,
   `npm run lint`, `npm run build` in `client/` — 39 tests) and the server gate
-  (`npm run lint` in `server/`, plus `npm run test` — 68 API tests — which
+  (`npm run lint` in `server/`, plus `npm run test` — 72 API tests — which
   require a running PostgreSQL).

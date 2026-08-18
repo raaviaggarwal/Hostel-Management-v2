@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken'
 
-export const SECRET = process.env.JWT_SECRET || 'dev-secret'
+const configuredSecret = process.env.JWT_SECRET
+if (!configuredSecret && process.env.NODE_ENV === 'production') {
+  throw new Error('JWT_SECRET must be set in production')
+}
+
+export const SECRET = configuredSecret || 'dev-secret'
 
 export const WARDEN_ROLES = ['warden', 'chief_warden', 'deputy_warden', 'assistant_warden']
 

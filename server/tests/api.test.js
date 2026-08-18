@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
 import request from 'supertest'
 import jwt from 'jsonwebtoken'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { prisma } from '../src/prisma.js'
 import { seedDatabase } from '../prisma/seed.js'
 import { createApp } from '../src/app.js'
@@ -854,5 +857,36 @@ describe('admin reports', () => {
     const totalTickets = await prisma.maintenanceTicket.count()
     expect(report.maintenanceSummary.open + report.maintenanceSummary.resolved).toBe(totalTickets)
     expect(report.messRating).toBeTruthy()
+  })
+})
+
+describe('server hardening', () => {
+  const distIndex = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist/index.html')
+
+  it('returns 500 JSON for unhandled async errors instead of hanging', async () => {
+    const res = await request(app)
+      .post('/api/students')
+      .set('Content-Type', 'application/json')
+      .set(auth('admin', 1))
+      .send({})
+    expect(res.status).toBe(500)
+    expect(res.body.message).toBe('Internal server error')
+  })
+
+  it('returns 404 JSON for unknown API routes', async () => {
+    const res = await request(app).get('/api/nope')
+    expect(res.status).toBe(404)
+    expect(res.body.message).toBe('Not found')
+  })
+
+  it('sets security headers via helmet', async () => {
+    const res = await request(app).get('/api/auth/me')
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
+  })
+
+  it.skipIf(!fs.existsSync(distIndex))('serves the client build for non-API GET routes', async () => {
+    const res = await request(app).get('/admin/dashboard')
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toMatch(/html/)
   })
 })

@@ -6,7 +6,8 @@ The system is a **client + server** split (Phase 6 of the roadmap):
 
 - `client/` — a React SPA that talks to the backend over `fetch('/api/...')`.
   In dev, Vite proxies `/api` to the Express server (`http://localhost:5000`);
-  the production build serves the API from the same origin.
+  in production, Express serves the built `client/dist` (static files + SPA
+  fallback to `index.html` for non-`/api` GET routes) from the same origin.
 - `server/` — an Express REST API backed by **PostgreSQL via Prisma**,
   authenticating users with **JWT** and serving real multipart uploads via
   **multer**.
@@ -35,6 +36,7 @@ Vite dev proxy (/api)  ──►  Express server (server/src/app.js)
 | Routing | React Router 7 | `BrowserRouter`, nested `Routes` |
 | Charts | Recharts 3 | admin / warden dashboards |
 | API server | Express 4 | `app.js` builds the app, `routes/index.js` holds all handlers |
+| Security | helmet + express-rate-limit | headers, CORS allowlist, rate limits in production |
 | ORM | Prisma 6 | schema-first, PostgreSQL; client generated into `node_modules` |
 | Database | PostgreSQL 17 | connection via `DATABASE_URL` in `server/.env` |
 | Auth | jsonwebtoken + bcryptjs | JWT `{ sub, role }`; bcrypt-hashed passwords (round 4) |
@@ -78,7 +80,8 @@ server
 │   └── migrations/        # 20260816000000_init + 20260818042235_fee_due_date_optional + migration_lock.toml
 ├── src/
 │   ├── index.js           # entry: loads dotenv, listens on PORT || 5000
-│   ├── app.js             # createApp(): cors, json({limit:'2mb'}), /api router, error/404 handlers
+│   ├── app.js             # createApp(): helmet, cors, json({limit:'2mb'}), rate limits,
+│   │                      #   /api router, client static + SPA fallback, error/404 handlers
 │   ├── prisma.js          # PrismaClient singleton (imports dotenv/config first)
 │   ├── auth.js            # SECRET, WARDEN_ROLES, signToken, publicUser
 │   └── routes/
@@ -126,7 +129,8 @@ functions (used by the tests) and only seeds directly when executed by `node`
 ## Authentication & session
 
 - `POST /api/auth/login` returns `{ token, user }`; token is a JWT signed with
-  `JWT_SECRET` (`server/.env`, default `dev-secret`) containing `{ sub, role }`.
+  `JWT_SECRET` (`server/.env`, default `dev-secret` in dev; **required** when
+  `NODE_ENV=production`) containing `{ sub, role }`.
 - The client stores `token`, `sessionExpiry` (24 h) and `user` in
   `localStorage` (`AuthContext`).
 - Every request sends `Authorization: Bearer <token>`; the server resolves the
@@ -266,9 +270,10 @@ Two suites, both Vitest with `pool: 'threads'`:
   (`auth.test.jsx`, `protected-route.test.jsx`, `navigation.test.js`,
   `breadcrumb.test.js`, `useTableFilter.test.js`, `format.test.js`). No API
   tests — those live on the server.
-- **Server** (`server/`, node, 68 tests): `tests/api.test.js` drives the
+- **Server** (`server/`, node, 72 tests): `tests/api.test.js` drives the
   Express app with **supertest** against real Prisma/PostgreSQL. `beforeEach`
   reseeds the database via `seedDatabase(prisma)`; `tokenFor(role, id)` signs a
   JWT with the shared dev secret. These tests are the port of the old
-  `mock-api.test.js` contract tests. They require a running PostgreSQL
-  (`DATABASE_URL` in `server/.env`).
+  `mock-api.test.js` contract tests, plus hardening cases (async error → 500,
+  404 for unknown API routes, helmet headers, SPA fallback). They require a
+  running PostgreSQL (`DATABASE_URL` in `server/.env`).

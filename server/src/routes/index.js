@@ -7,6 +7,12 @@ import { SECRET, WARDEN_ROLES, signToken, publicUser } from '../auth.js'
 
 export const router = Router()
 
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
+for (const method of ['get', 'post', 'put', 'delete', 'patch']) {
+  const original = router[method].bind(router)
+  router[method] = (...args) => original(args[0], ...args.slice(1).map((arg) => (typeof arg === 'function' ? wrap(arg) : arg)))
+}
+
 const ok = (res, body, status = 200) => res.status(status).json(body)
 const fail = (res, message, status = 400) => res.status(status).json({ message })
 const today = () => new Date().toISOString().slice(0, 10)

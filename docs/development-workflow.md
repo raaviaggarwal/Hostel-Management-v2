@@ -42,6 +42,18 @@ Run server commands from `server/` (server must see a valid `DATABASE_URL` in
 gate (`npm run lint` in `server/`, plus `npm run test` when the database is
 available). All must pass before considering a task done.
 
+## Production mode
+
+When `NODE_ENV=production`, the server additionally:
+
+- **Serves the client build** — after `npm run build` in `client/`, `npm run
+  start` in `server/` serves `client/dist` statically and falls back to
+  `index.html` for non-`/api` GET routes (single-origin SPA).
+- **Requires `JWT_SECRET`** — the server fails fast at startup if it is unset.
+- **Enables rate limits** — `/api` (1,000 req / 15 min per IP) and
+  `/api/auth/login` (10 / 15 min per IP). Rate limits and the static/SPA
+  serving are inactive in dev (`npm run dev`) and tests.
+
 ## Getting the database up (first time)
 
 1. Create a database, e.g. `hostel_management`, and put the connection string in
@@ -165,7 +177,8 @@ replaced the mock layer with a real backend.
 | **B** | Student life workflows: leave, out-pass, entry-exit (biometric), fees, notices, notifications | Done (out-pass, entry-exit, notifications, notices audience + leave destination) |
 | **C** | Service workflows: maintenance tickets, complaints, room inventory, housekeeping, mess module, Wi-Fi, medical, visitors | Done (admin maintenance/inventory/housekeeping/mess/wifi/medical/complaints/visitors + warden scoped maintenance/mess + student maintenance & mess feedback; 71 tests green) |
 | **D** | Cross-cutting: caretaker / security / housekeeping / mess / maintenance / parent portals, committee, off-campus fee logic, analytics, reports, search/filters, audit logs | Done (staff portals fully built + scoped handlers, committee, audit logs, parent ward view, off-campus fee slab, fee-by-campus + maintenance/mess metrics in reports, global table search/filters, code splitting, complaint uploads, extended CSV exports, lint cleanup; 108 tests green) |
-| **Phase 6** | Backend split: Express + Prisma + PostgreSQL + JWT server, MSW removed, API tests ported to supertest | In progress (server built, client rewired; 68 API tests pending a working `DATABASE_URL`) |
+| **Phase 6** | Backend split: Express + Prisma + PostgreSQL + JWT server, MSW removed, API tests ported to supertest | Done (server built, client rewired; 72 API tests green) |
+| **Phase 7** | Deployment readiness: async error handling, serve `client/dist`, helmet/CORS/rate limits, JWT_SECRET guard | Done (hardening tests added; 72 server tests green) |
 
 Working notes:
 
