@@ -317,7 +317,7 @@ function notificationWhereFor(user) {
 
 router.get('/notifications', async (req, res) => {
   const user = await getUser(req)
-  return ok(res, await paginate(req, prisma.notification, { where: notificationWhereFor(user) }))
+  return ok(res, paginateList(req, await prisma.notification.findMany({ where: notificationWhereFor(user) })))
 })
 
 router.post('/notifications/read-all', async (req, res) => {
@@ -1204,10 +1204,10 @@ router.get('/student/complaints', async (req, res) => {
 router.get('/leaves', async (req, res) => {
   const warden = await wardenUser(req)
   if (!warden) {
-    return ok(res, await paginate(req, prisma.leave))
+    return ok(res, paginateList(req, await prisma.leave.findMany({ orderBy: { id: 'asc' } })))
   }
   if (!warden.hostelId) {
-    return ok(res, await paginate(req, prisma.leave))
+    return ok(res, paginateList(req, await prisma.leave.findMany({ orderBy: { id: 'asc' } })))
   }
   const students = await prisma.student.findMany({ where: { hostelId: warden.hostelId } })
   const ids = new Set(students.map((s) => s.id))
@@ -1601,7 +1601,7 @@ router.post('/mess/inspections', async (req, res) => {
 router.get('/wifi', async (req, res) => {
   const hostelId = req.query.hostelId
   const where = hostelId && hostelId !== 'all' ? { hostelId: num(hostelId) } : undefined
-  return ok(res, await paginate(req, prisma.wifiAccessPoint, { where, orderBy: { id: 'asc' } }))
+  return ok(res, paginateList(req, await prisma.wifiAccessPoint.findMany({ where })))
 })
 
 router.put('/wifi/:id', async (req, res) => {
