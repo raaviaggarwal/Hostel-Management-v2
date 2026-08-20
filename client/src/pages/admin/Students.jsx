@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  App as AntApp,
   Button,
   Card,
   Drawer,
@@ -11,7 +10,9 @@ import {
   Select,
   Space,
   Tag,
+  message,
 } from 'antd'
+
 import {
   EyeOutlined,
   EditOutlined,
@@ -26,8 +27,6 @@ import EntityModal from '../../components/EntityModal'
 import ConfirmDelete from '../../components/ConfirmDelete'
 
 export default function Students() {
-  const { message } = AntApp.useApp()
-
   const { data = [], loading, reload } = useResource('/students')
   const { data: hostels = [] } = useResource('/hostels')
   const { data: blocks = [] } = useResource('/blocks')
@@ -102,7 +101,7 @@ export default function Students() {
       setEditing(null)
       reload()
     } catch (error) {
-      message.error(error.message || 'Failed to update student')
+      message.error(error?.message || 'Failed to update student')
     } finally {
       setSaving(false)
     }
@@ -115,7 +114,7 @@ export default function Students() {
       message.success('Student deleted successfully')
       reload()
     } catch (error) {
-      message.error(error.message || 'Failed to delete student')
+      message.error(error?.message || 'Failed to delete student')
     }
   }
 
@@ -135,7 +134,7 @@ export default function Students() {
       resetStudentForm()
       reload()
     } catch (error) {
-      message.error(error.message || 'Failed to add student')
+      message.error(error?.message || 'Failed to add student')
     } finally {
       setSaving(false)
     }
@@ -285,6 +284,7 @@ export default function Students() {
         />
       </Card>
 
+      {/* View Student Drawer */}
       <Drawer
         title={`${viewing?.name || 'Student'} — Details`}
         open={!!viewing}
@@ -294,39 +294,39 @@ export default function Students() {
         {viewing && (
           <Descriptions column={1} bordered size="small">
             <Descriptions.Item label="Reg No">
-              {viewing.regNo}
+              {viewing.regNo || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Full Name">
-              {viewing.name}
+              {viewing.name || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Gender">
-              {viewing.gender}
+              {viewing.gender || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Contact">
-              {viewing.contactno}
+              {viewing.contactno || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Email">
-              {viewing.emailid}
+              {viewing.emailid || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Course">
-              {viewing.course}
+              {viewing.course || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Room">
-              {viewing.roomno}
+              {viewing.roomno || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Seater">
-              {viewing.seater}
+              {viewing.seater || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Stay From">
-              {viewing.stayfrom}
+              {viewing.stayfrom || '-'}
             </Descriptions.Item>
 
             <Descriptions.Item label="Hostel">
@@ -350,10 +350,11 @@ export default function Students() {
         )}
       </Drawer>
 
+      {/* Edit Student Modal */}
       <EntityModal
         open={editingOpen}
         title="Edit Student"
-        initialValues={editing}
+        initialValues={editing || {}}
         fields={editFields}
         loading={saving}
         onCancel={() => {
@@ -363,6 +364,7 @@ export default function Students() {
         onSubmit={handleEdit}
       />
 
+      {/* Add Student Drawer */}
       <Drawer
         title="Add Student"
         open={addStudentOpen}
@@ -548,4 +550,4 @@ export default function Students() {
       </Drawer>
     </div>
   )
-}   
+}
