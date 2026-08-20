@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Card, Col, Empty, Row, Skeleton, Statistic, Tag, Typography } from 'antd'
 import {
-  WalletOutlined,
   BugOutlined,
   CalendarOutlined,
-  CheckCircleOutlined,
   TeamOutlined,
 } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
@@ -44,35 +42,10 @@ export default function StudentDashboard() {
     <>
       <PageHeader
         title={`Welcome, ${user?.name?.split(' ')[0] || 'Student'}`}
-        subtitle="Your hostel dashboard — fees, complaints, leave and more."
+        subtitle="Your hostel dashboard — complaints, leave, attendance and more."
       />
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic title="Total Fees" value={s.feesTotal} prefix={<WalletOutlined />} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Fees Paid"
-              value={s.feesPaid}
-              valueStyle={{ color: '#1B8A6B' }}
-              prefix={<CheckCircleOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Fees Pending"
-              value={s.feesPending}
-              valueStyle={{ color: '#C0392B' }}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
         <Col xs={24} sm={12} md={6}>
           <Card size="small">
             <Statistic

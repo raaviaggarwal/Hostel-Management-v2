@@ -2,23 +2,22 @@ import { describe, it, expect } from 'vitest'
 import { NAV, HOME_FOR_ROLE, navForRole, portalForRole, PORTAL_FOR_ROLE } from '../routes/navigation'
 
 describe('role navigation config', () => {
-  it('admin has 23 links', () => {
-    expect(NAV.admin).toHaveLength(23)
+  it('admin has 20 links', () => {
+    expect(NAV.admin).toHaveLength(20)
   })
 
-  it('warden has 15 links', () => {
-    expect(NAV.warden).toHaveLength(15)
+  it('warden has 12 links', () => {
+    expect(NAV.warden).toHaveLength(12)
   })
 
-  it('student has 16 links', () => {
-    expect(NAV.student).toHaveLength(16)
+  it('student has 12 links', () => {
+    expect(NAV.student).toHaveLength(12)
   })
 
   it('staff portals have their module links', () => {
-    expect(NAV.security).toHaveLength(4)
+    expect(NAV.security).toHaveLength(2)
     expect(NAV.mess).toHaveLength(5)
     expect(NAV.housekeeping).toHaveLength(2)
-    expect(NAV.maintenance).toHaveLength(2)
     expect(NAV.caretaker).toHaveLength(1)
     expect(NAV.parent).toHaveLength(1)
   })
@@ -48,7 +47,6 @@ describe('role navigation config', () => {
     expect(portalForRole('mess_manager')).toBe('mess')
     expect(portalForRole('security')).toBe('security')
     expect(portalForRole('housekeeping')).toBe('housekeeping')
-    expect(portalForRole('maintenance_staff')).toBe('maintenance')
     expect(portalForRole('student')).toBe('student')
     expect(portalForRole('parent')).toBe('parent')
     expect(portalForRole('unknown')).toBe('admin')
@@ -62,7 +60,6 @@ describe('role navigation config', () => {
     expect(HOME_FOR_ROLE.mess_manager).toBe('/mess/dashboard')
     expect(HOME_FOR_ROLE.security).toBe('/security/dashboard')
     expect(HOME_FOR_ROLE.housekeeping).toBe('/housekeeping/dashboard')
-    expect(HOME_FOR_ROLE.maintenance_staff).toBe('/maintenance/dashboard')
     expect(HOME_FOR_ROLE.student).toBe('/student/dashboard')
     expect(HOME_FOR_ROLE.parent).toBe('/parent/dashboard')
   })

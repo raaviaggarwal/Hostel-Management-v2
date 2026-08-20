@@ -5,7 +5,6 @@ import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import StatusTag from '../../components/StatusTag'
-import { formatCurrency } from '../../utils/format'
 
 const STATUS_OPTIONS = [
   { label: 'Available', value: 'available' },
@@ -60,11 +59,6 @@ export default function RoomDetail() {
         <Col xs={24} sm={12} md={6}>
           <Card size="small">
             <Statistic title="Occupied" value={`${data.occupants.length}/${data.seater}`} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic title="Fees / Month" value={formatCurrency(data.fees)} />
           </Card>
         </Col>
       </Row>

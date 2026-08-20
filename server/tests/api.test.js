@@ -7,11 +7,16 @@ import { fileURLToPath } from 'node:url'
 import { prisma } from '../src/prisma.js'
 import { seedDatabase } from '../prisma/seed.js'
 import { createApp } from '../src/app.js'
-import { SECRET } from '../src/auth.js'
+import { SECRET, JWT_ISSUER, JWT_AUDIENCE } from '../src/auth.js'
 
 const app = createApp()
 
-const tokenFor = (role, id) => jwt.sign({ sub: id, role }, SECRET, { expiresIn: '24h' })
+const tokenFor = (role, id) =>
+  jwt.sign({ sub: id, role, ver: 0 }, SECRET, {
+    expiresIn: '24h',
+    issuer: JWT_ISSUER,
+    audience: JWT_AUDIENCE,
+  })
 const auth = (role, id) => ({ Authorization: `Bearer ${tokenFor(role, id)}` })
 const get = async (url, headers) => {
   const res = await request(app).get(url).set(headers || {})
@@ -69,6 +74,20 @@ describe('auth', () => {
   it('rejects invalid credentials', async () => {
     const res = await post('/api/auth/login', { usernameOrEmail: 'student', password: 'wrong' })
     expect(res.status).toBe(401)
+  })
+
+  it('logout invalidates the token server-side', async () => {
+    const login = await post('/api/auth/login', { usernameOrEmail: 'student', password: 'student123' })
+    const headers = { Authorization: `Bearer ${login.body.token}` }
+    const me = await get('/api/auth/me', headers)
+    expect(me.user.role).toBe('student')
+
+    const logout = await post('/api/auth/logout', {}, headers)
+    expect(logout.status).toBe(200)
+
+    const after = await get('/api/auth/me', headers)
+    expect(after.user).toBeUndefined()
+    expect(after.message).toBe('Unauthorized')
   })
 })
 
@@ -312,23 +331,23 @@ describe('allocation workflow', () => {
   })
 })
 
-describe('out-pass workflow', () => {
-  it('prevents a student with an open out-pass from requesting another', async () => {
+describe('leave workflow', () => {
+  it('prevents a student with an open leave from requesting another', async () => {
     const raavi = await byName('Raavi Aggarwal')
     const res = await post(
-      '/api/outpasses',
-      { destination: 'Solan', reason: 'Errand', departure: '2026-08-16 09:00', expectedReturn: '2026-08-16 12:00' },
+      '/api/leaves',
+      { from: '2026-08-16', to: '2026-08-17', reason: 'Errand', destination: 'Solan' },
       auth('student', raavi.id)
     )
     expect(res.status).toBe(400)
-    expect(res.body.message).toContain('already have a pending or active out-pass')
+    expect(res.body.message).toContain('already have a pending or active leave')
   })
 
-  it('lets a student request an out-pass and warden approve it', async () => {
+  it('lets a student request leave and warden approve it', async () => {
     const nivi = await byName('Nivi Jha')
     const created = await post(
-      '/api/outpasses',
-      { destination: 'Chandigarh', reason: 'Shopping', departure: '2026-08-17 10:00', expectedReturn: '2026-08-17 18:00' },
+      '/api/leaves',
+      { from: '2026-08-17', to: '2026-08-17', reason: 'Shopping', destination: 'Chandigarh' },
       auth('student', nivi.id)
     )
     expect(created.status).toBe(201)
@@ -336,7 +355,7 @@ describe('out-pass workflow', () => {
     expect(created.body.studentName).toBe('Nivi Jha')
 
     const approved = await post(
-      `/api/outpasses/${created.body.id}/decision`,
+      `/api/leaves/${created.body.id}/decision`,
       { status: 'approved' },
       auth('warden', 3)
     )
@@ -344,40 +363,41 @@ describe('out-pass workflow', () => {
     expect(approved.body.status).toBe('approved')
   })
 
-  it('activates an approved out-pass on departure and completes it on return', async () => {
+  it('activates an approved leave on departure and completes it on return', async () => {
     const nivi = await byName('Nivi Jha')
     const created = await post(
-      '/api/outpasses',
-      { destination: 'Chandigarh', reason: 'Shopping', departure: '2026-08-17 10:00', expectedReturn: '2026-08-17 18:00' },
+      '/api/leaves',
+      { from: '2026-08-17', to: '2026-08-17', reason: 'Shopping', destination: 'Chandigarh' },
       auth('student', nivi.id)
     )
-    await post(`/api/outpasses/${created.body.id}/decision`, { status: 'approved' }, auth('warden', 3))
+    await post(`/api/leaves/${created.body.id}/decision`, { status: 'approved' }, auth('warden', 3))
 
-    const active = await post(`/api/outpasses/${created.body.id}/activate`, {})
+    const active = await post(`/api/leaves/${created.body.id}/activate`, {})
     expect(active.status).toBe(200)
     expect(active.body.status).toBe('active')
+    expect(active.body.departure).toBeTruthy()
 
     const exitRecord = await prisma.entryExit.findFirst({
-      where: { linkedOutpassId: created.body.id, type: 'exit' },
+      where: { linkedLeaveId: created.body.id, type: 'exit' },
     })
     expect(exitRecord).toBeTruthy()
 
-    const completed = await post(`/api/outpasses/${created.body.id}/complete`, {})
+    const completed = await post(`/api/leaves/${created.body.id}/complete`, {})
     expect(completed.status).toBe(200)
     expect(completed.body.status).toBe('completed')
     expect(completed.body.actualReturn).toBeTruthy()
 
     const entryRecord = await prisma.entryExit.findFirst({
-      where: { linkedOutpassId: created.body.id, type: 'entry' },
+      where: { linkedLeaveId: created.body.id, type: 'entry' },
     })
     expect(entryRecord).toBeTruthy()
   })
 
-  it('scopes out-passes to the warden hostel', async () => {
+  it('scopes leaves to the warden hostel', async () => {
     const meena = await userByUsername('meena')
-    const list = await get('/api/outpasses', auth('warden', meena.id))
-    expect(list.some((o) => o.studentName === 'Raavi Aggarwal')).toBe(true)
-    expect(list.some((o) => o.studentName === 'Aarav Sharma')).toBe(false)
+    const list = await get('/api/leaves', auth('warden', meena.id))
+    expect(list.some((l) => l.studentName === 'Raavi Aggarwal')).toBe(true)
+    expect(list.some((l) => l.studentName === 'Aarav Sharma')).toBe(false)
   })
 })
 
@@ -406,23 +426,23 @@ describe('entry / exit (biometric)', () => {
     expect(res.body.lateMinutes).toBe(50)
   })
 
-  it('auto-links an approved out-pass when the student exits', async () => {
+  it('auto-links an approved leave when the student exits', async () => {
     const nivi = await byName('Nivi Jha')
     const created = await post(
-      '/api/outpasses',
-      { destination: 'Chandigarh', reason: 'Shopping', departure: '2026-08-17 10:00', expectedReturn: '2026-08-17 18:00' },
+      '/api/leaves',
+      { from: '2026-08-17', to: '2026-08-17', reason: 'Shopping', destination: 'Chandigarh' },
       auth('student', nivi.id)
     )
-    await post(`/api/outpasses/${created.body.id}/decision`, { status: 'approved' }, auth('warden', 3))
+    await post(`/api/leaves/${created.body.id}/decision`, { status: 'approved' }, auth('warden', 3))
 
     const exit = await post(
       '/api/entry-exit',
       { studentId: nivi.id, type: 'exit', date: '2026-08-17', time: '10:05', gate: 'Main Gate' },
       auth('warden', 3)
     )
-    expect(exit.body.linkedOutpassId).toBe(created.body.id)
-    const outpass = await prisma.outpass.findUnique({ where: { id: created.body.id } })
-    expect(outpass.status).toBe('active')
+    expect(exit.body.linkedLeaveId).toBe(created.body.id)
+    const leave = await prisma.leave.findUnique({ where: { id: created.body.id } })
+    expect(leave.status).toBe('active')
   })
 
   it('rejects punch recording from a student token', async () => {
@@ -470,6 +490,16 @@ describe('notifications', () => {
     const all = await prisma.notification.findMany()
     expect(all.every((n) => n.read)).toBe(true)
   })
+
+  it('scopes notifications per requester', async () => {
+    const raavi = await byName('Raavi Aggarwal')
+    const studentList = await get('/api/notifications', auth('student', raavi.id))
+    expect(studentList.some((n) => n.id === 3)).toBe(true)
+    expect(studentList.some((n) => n.id === 2)).toBe(false)
+
+    const wardenList = await get('/api/notifications', auth('warden', 2))
+    expect(wardenList.some((n) => n.id === 2)).toBe(true)
+  })
 })
 
 describe('notices audience', () => {
@@ -477,117 +507,41 @@ describe('notices audience', () => {
     const raavi = await byName('Raavi Aggarwal')
     const aarav = await byName('Aarav Sharma')
     const girls = await get('/api/notices', auth('student', raavi.id))
-    expect(girls.some((n) => n.id === 3)).toBe(true)
+    expect(girls.some((n) => n.id === 2)).toBe(true)
     const boys = await get('/api/notices', auth('student', aarav.id))
-    expect(boys.some((n) => n.id === 3)).toBe(false)
+    expect(boys.some((n) => n.id === 2)).toBe(false)
   })
 })
 
 describe('maintenance tickets', () => {
-  it('lets a student raise a ticket', async () => {
+  it('rejects student ticket creation (module removed)', async () => {
     const raavi = await byName('Raavi Aggarwal')
     const res = await post(
       '/api/maintenance',
       { category: 'Electrical', subcategory: 'Fan not working', description: 'Fan is noisy', priority: 'high' },
       auth('student', raavi.id)
     )
-    expect(res.status).toBe(201)
-    expect(res.body.status).toBe('reported')
-    expect(res.body.studentId).toBe(raavi.id)
-    expect(res.body.hostelId).toBe(5)
-    expect(res.body.roomNo).toBe(raavi.roomno)
-  })
-
-  it('scopes tickets to the warden hostel', async () => {
-    const meena = await userByUsername('meena')
-    const list = await get('/api/maintenance', auth('warden', meena.id))
-    expect(list.some((t) => t.studentId === 40)).toBe(true)
-    expect(list.some((t) => t.studentId === 10)).toBe(false)
-  })
-
-  it('updates a ticket and lets the owner rate it', async () => {
-    const nivi = await byName('Nivi Jha')
-    const ticket = await prisma.maintenanceTicket.findFirst({ where: { studentId: nivi.id } })
-    const updated = await put(
-      `/api/maintenance/${ticket.id}`,
-      { status: 'in_progress', assignedTo: 'Technician T2' },
-      auth('warden', 3)
-    )
-    expect(updated.status).toBe(200)
-    expect(updated.body.status).toBe('in_progress')
-
-    const resolved = await put(`/api/maintenance/${ticket.id}`, { status: 'resolved' }, auth('warden', 3))
-    expect(resolved.body.status).toBe('resolved')
-    expect(resolved.body.resolvedDate).toBeTruthy()
-
-    const rated = await post(`/api/maintenance/${ticket.id}/rate`, { rating: 5, remarks: 'Great' }, auth('student', nivi.id))
-    expect(rated.status).toBe(200)
-    expect(rated.body.rating).toBe(5)
-  })
-
-  it('rejects rating from a non-owner student', async () => {
-    const aarav = await byName('Aarav Sharma')
-    const nivi = await byName('Nivi Jha')
-    const ticket = await prisma.maintenanceTicket.findFirst({ where: { studentId: nivi.id } })
-    const res = await post(`/api/maintenance/${ticket.id}/rate`, { rating: 1 }, auth('student', aarav.id))
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(404)
   })
 })
 
-describe('complaint file uploads', () => {
-  const multipart = (filename, type, content) => {
-    const boundary = '----hmv-test'
-    const body =
-      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${type}\r\n\r\n` +
-      content +
-      `\r\n--${boundary}--\r\n`
-    return { body, boundary }
-  }
-
-  it('uploads a file and stores the data URL with a complaint', async () => {
-    const { body, boundary } = multipart('photo.png', 'image/png', 'x'.repeat(100))
-
-    const upload = await request(app)
-      .post('/api/upload')
-      .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
-      .send(body)
-
-    expect(upload.status).toBe(200)
-    expect(upload.body.name).toBe('photo.png')
-    expect(upload.body.type).toBe('image/png')
-    expect(upload.body.url).toMatch(/^data:image\/png;base64,/)
-
+describe('complaint preferred visiting hours', () => {
+  it('stores the preferred visiting hours with a complaint', async () => {
     const created = await post(
       '/api/complaints',
       {
         complaintType: 'Electrical',
         complaintDetails: 'Light flickers in room',
-        complaintDoc: { name: upload.body.name, url: upload.body.url },
+        preferredVisitingHours: '10-12',
       },
       auth('student', 10)
     )
     expect(created.status).toBe(201)
-    expect(created.body.complaintDoc.url).toBe(upload.body.url)
+    expect(created.body.preferredVisitingHours).toBe('10-12')
 
     const mine = await get('/api/student/complaints', auth('student', 10))
     const stored = mine.find((c) => c.id === created.body.id)
-    expect(stored.complaintDoc.name).toBe('photo.png')
-  })
-
-  it('rejects non-image or oversized uploads', async () => {
-    const bad = multipart('x.exe', 'application/x-msdownload', '<exe/>')
-    const rejected = await request(app)
-      .post('/api/upload')
-      .set('Content-Type', `multipart/form-data; boundary=${bad.boundary}`)
-      .send(bad.body)
-    expect(rejected.status).toBe(415)
-
-    const big = multipart('big.pdf', 'application/pdf', 'x'.repeat(3 * 1024 * 1024))
-    const oversized = await request(app)
-      .post('/api/upload')
-      .set('Content-Type', `multipart/form-data; boundary=${big.boundary}`)
-      .send(big.body)
-    expect(oversized.status).toBe(413)
+    expect(stored.preferredVisitingHours).toBe('10-12')
   })
 })
 
@@ -728,34 +682,10 @@ describe('medical', () => {
   })
 })
 
-describe('visitors', () => {
-  it('exposes all visitors to admin', async () => {
-    const list = await get('/api/visitors', auth('admin', 1))
-    expect(list.length).toBeGreaterThan(0)
-  })
-})
-
 describe('security portal', () => {
-  it('lists only approved and active out-passes', async () => {
-    const list = await get('/api/security/outpasses', auth('security', 7))
-    expect(list.length).toBeGreaterThan(0)
-    expect(list.every((o) => ['approved', 'active'].includes(o.status))).toBe(true)
-  })
-
-  it('checks a visitor in and out at the gate', async () => {
-    const checkedIn = await post('/api/visitors/2/checkin', {}, auth('security', 7))
-    expect(checkedIn.status).toBe(200)
-    expect(checkedIn.body.status).toBe('checked-in')
-    expect(checkedIn.body.inTime).toBeTruthy()
-
-    const checkedOut = await post('/api/visitors/2/checkout', {}, auth('security', 7))
-    expect(checkedOut.body.status).toBe('checked-out')
-    expect(checkedOut.body.outTime).toBeTruthy()
-  })
-
-  it('rejects non-gate roles from editing visitors', async () => {
-    const res = await post('/api/visitors/1/checkin', {}, auth('student', 10))
-    expect(res.status).toBe(401)
+  it('can view approved and active leaves at the gate', async () => {
+    const list = await get('/api/leaves', auth('security', 7))
+    expect(list.some((l) => ['approved', 'active'].includes(l.status))).toBe(true)
   })
 })
 
@@ -803,21 +733,6 @@ describe('housekeeping staff portal', () => {
   })
 })
 
-describe('maintenance staff portal', () => {
-  it('scopes tickets to the staff hostel', async () => {
-    const list = await get('/api/maintenance', auth('maintenance_staff', 9))
-    expect(list.length).toBe(3)
-    expect(list.every((t) => t.hostelId === 5)).toBe(true)
-  })
-
-  it('lets staff update a ticket', async () => {
-    const updated = await put('/api/maintenance/2', { status: 'resolved' }, auth('maintenance_staff', 9))
-    expect(updated.status).toBe(200)
-    expect(updated.body.status).toBe('resolved')
-    expect(updated.body.resolvedDate).toBeTruthy()
-  })
-})
-
 describe('caretaker portal', () => {
   it('scopes housekeeping to the caretaker hostel', async () => {
     const list = await get('/api/housekeeping', auth('caretaker', 5))
@@ -853,16 +768,31 @@ describe('audit logs', () => {
     const res = await get('/api/audit-logs', auth('warden', 3))
     expect(res.message).toBe('Unauthorized')
   })
+
+  it('records actor identity and supports filtering', async () => {
+    const created = await post(
+      '/api/notices',
+      { title: 'Audit Probe Notice', body: 'x', category: 'General', audience: 'all' },
+      auth('admin', 1)
+    )
+    expect(created.status).toBe(201)
+
+    const list = await get('/api/audit-logs?entity=Notice&action=Created', auth('admin', 1))
+    const probe = list.find((log) => log.target === 'Audit Probe Notice')
+    expect(probe).toBeTruthy()
+    expect(probe.actorId).toBe(1)
+    expect(probe.actorRole).toBe('admin')
+    expect(probe.actor).toBe('System Admin')
+    expect(probe.entity).toBe('Notice')
+  })
 })
 
 describe('parent portal', () => {
   it('returns the linked ward with their records', async () => {
     const data = await get('/api/parent/ward', auth('parent', 100))
     expect(data.student.name).toBe('Raavi Aggarwal')
-    expect(Array.isArray(data.fees)).toBe(true)
     expect(Array.isArray(data.attendance)).toBe(true)
     expect(Array.isArray(data.leaves)).toBe(true)
-    expect(Array.isArray(data.outpasses)).toBe(true)
     expect(Array.isArray(data.notices)).toBe(true)
   })
 
@@ -872,24 +802,13 @@ describe('parent portal', () => {
   })
 })
 
-describe('off-campus fees', () => {
-  it('defaults fees to the off-campus slab', async () => {
-    const aarav = await prisma.student.findUnique({ where: { id: 10 } })
-    await prisma.student.update({ where: { id: 10 }, data: { hostelId: 6, feespm: null } })
-    const res = await post('/api/fees', { studentId: 10 }, auth('admin', 1))
-    expect(res.status).toBe(201)
-    expect(res.body.amount).toBe(70000)
-  })
-})
-
 describe('admin reports', () => {
-  it('includes fee-by-campus and maintenance summaries', async () => {
+  it('includes mess rating and complaint stats', async () => {
     const report = await get('/api/admin/reports', auth('admin', 1))
-    expect(typeof report.feeByCampus.campus).toBe('number')
-    expect(typeof report.feeByCampus['off-campus']).toBe('number')
-    const totalTickets = await prisma.maintenanceTicket.count()
-    expect(report.maintenanceSummary.open + report.maintenanceSummary.resolved).toBe(totalTickets)
     expect(report.messRating).toBeTruthy()
+    expect(typeof report.totalComplaints).toBe('number')
+    expect(report.feeSummary).toBeUndefined()
+    expect(report.maintenanceSummary).toBeUndefined()
   })
 })
 

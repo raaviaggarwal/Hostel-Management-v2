@@ -7,16 +7,12 @@ const StudentProfile = lazy(() => import('../pages/student/StudentProfile'))
 const AllocationApply = lazy(() => import('../pages/student/AllocationApply'))
 const MyAllocation = lazy(() => import('../pages/student/MyAllocation'))
 const StudentLeave = lazy(() => import('../pages/student/StudentLeave'))
-const StudentOutPass = lazy(() => import('../pages/student/StudentOutPass'))
 const StudentEntryExit = lazy(() => import('../pages/student/StudentEntryExit'))
 const StudentComplaints = lazy(() => import('../pages/student/StudentComplaints'))
-const StudentMaintenance = lazy(() => import('../pages/student/StudentMaintenance'))
-const StudentVisitors = lazy(() => import('../pages/student/StudentVisitors'))
 const StudentAttendance = lazy(() => import('../pages/student/StudentAttendance'))
 const StudentNotices = lazy(() => import('../pages/student/StudentNotices'))
 const StudentMessMenu = lazy(() => import('../pages/student/StudentMessMenu'))
 const StudentMessFeedback = lazy(() => import('../pages/student/StudentMessFeedback'))
-const StudentFees = lazy(() => import('../pages/student/StudentFees'))
 const NotificationsList = lazy(() => import('../components/NotificationsList'))
 
 export default [
@@ -25,15 +21,11 @@ export default [
   <Route key="student-apply" path="apply" element={<AllocationApply />} />,
   <Route key="student-allocation" path="allocation" element={<MyAllocation />} />,
   <Route key="student-leave" path="leave" element={<StudentLeave />} />,
-  <Route key="student-outpass" path="outpass" element={<StudentOutPass />} />,
   <Route key="student-entry-exit" path="entry-exit" element={<StudentEntryExit />} />,
   <Route key="student-complaints" path="complaints" element={<StudentComplaints />} />,
-  <Route key="student-maintenance" path="maintenance" element={<StudentMaintenance />} />,
-  <Route key="student-visitors" path="visitors" element={<StudentVisitors />} />,
   <Route key="student-attendance" path="attendance" element={<StudentAttendance />} />,
   <Route key="student-notices" path="notices" element={<StudentNotices />} />,
   <Route key="student-mess-menu" path="mess-menu" element={<StudentMessMenu />} />,
   <Route key="student-mess-feedback" path="mess-feedback" element={<StudentMessFeedback />} />,
-  <Route key="student-fees" path="fees" element={<StudentFees />} />,
   <Route key="student-notifications" path="notifications" element={<NotificationsList />} />,
 ]

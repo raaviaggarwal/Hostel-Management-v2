@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { Card, Descriptions, Empty, Skeleton, Tag } from 'antd'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
-import { formatCurrency } from '../../utils/format'
 
 export default function StudentProfile() {
   const [profile, setProfile] = useState(null)
@@ -36,11 +35,6 @@ export default function StudentProfile() {
             <Descriptions.Item label="Room">
               {profile.roomno}
               {profile.seater ? ` (${profile.seater}-seater)` : ''}
-            </Descriptions.Item>
-          )}
-          {profile.feespm && (
-            <Descriptions.Item label="Fees / Month">
-              {formatCurrency(profile.feespm)}
             </Descriptions.Item>
           )}
           {profile.stayfrom && (

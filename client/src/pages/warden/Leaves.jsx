@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { App as AntApp, Button, Card, Popconfirm, Space, Tabs } from 'antd'
-import { CheckOutlined, CloseOutlined } from '@ant-design/icons'
+import { CheckOutlined, CloseOutlined, LogoutOutlined, UndoOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { useAuth } from '../../context/auth'
 import { useTableFilter } from '../../hooks/useTableFilter'
@@ -14,6 +14,8 @@ const TABS = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
   { key: 'rejected', label: 'Rejected' },
 ]
 
@@ -42,6 +44,7 @@ export default function Leaves() {
   const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, [
     'studentName',
     'reason',
+    'destination',
   ])
 
   const decide = async (leave, status) => {
@@ -54,44 +57,80 @@ export default function Leaves() {
     }
   }
 
+  const activate = async (leave) => {
+    try {
+      await resourceApi.post(`/leaves/${leave.id}/activate`, {})
+      message.success('Student marked as departed')
+      reload()
+    } catch (error) {
+      message.error(error.message)
+    }
+  }
+
+  const complete = async (leave) => {
+    try {
+      await resourceApi.post(`/leaves/${leave.id}/complete`, {})
+      message.success('Return marked, leave completed')
+      reload()
+    } catch (error) {
+      message.error(error.message)
+    }
+  }
+
   const columns = [
     { title: 'Student', dataIndex: 'studentName' },
     { title: 'From', dataIndex: 'from' },
     { title: 'To', dataIndex: 'to' },
-    { title: 'Reason', dataIndex: 'reason', ellipsis: true },
+    { title: 'Destination', dataIndex: 'destination' },
+    { title: 'Departure', dataIndex: 'departure', render: (v) => v || '-' },
+    { title: 'Actual Return', dataIndex: 'actualReturn', render: (v) => v || '-' },
     { title: 'Status', dataIndex: 'status', render: (v) => <StatusTag status={v} /> },
     {
       title: 'Actions',
       fixed: 'right',
-      render: (_, record) =>
-        record.status === 'pending' ? (
-          <Space>
-            <Popconfirm
-              title="Approve this leave?"
-              onConfirm={() => decide(record, 'approved')}
-            >
-              <Button type="primary" size="small" icon={<CheckOutlined />}>
-                Approve
+      render: (_, record) => {
+        if (record.status === 'pending') {
+          return (
+            <Space>
+              <Popconfirm title="Approve this leave?" onConfirm={() => decide(record, 'approved')}>
+                <Button type="primary" size="small" icon={<CheckOutlined />}>
+                  Approve
+                </Button>
+              </Popconfirm>
+              <Popconfirm title="Reject this leave?" onConfirm={() => decide(record, 'rejected')}>
+                <Button danger size="small" icon={<CloseOutlined />}>
+                  Reject
+                </Button>
+              </Popconfirm>
+            </Space>
+          )
+        }
+        if (record.status === 'approved') {
+          return (
+            <Popconfirm title="Mark student as departed?" onConfirm={() => activate(record)}>
+              <Button size="small" icon={<LogoutOutlined />}>
+                Mark Departed
               </Button>
             </Popconfirm>
-            <Popconfirm
-              title="Reject this leave?"
-              onConfirm={() => decide(record, 'rejected')}
-            >
-              <Button danger size="small" icon={<CloseOutlined />}>
-                Reject
+          )
+        }
+        if (record.status === 'active') {
+          return (
+            <Popconfirm title="Mark student as returned?" onConfirm={() => complete(record)}>
+              <Button type="primary" size="small" icon={<UndoOutlined />}>
+                Mark Returned
               </Button>
             </Popconfirm>
-          </Space>
-        ) : (
-          '-'
-        ),
+          )
+        }
+        return '-'
+      },
     },
   ]
 
   return (
     <>
-      <PageHeader title="Leaves" subtitle="Approve or reject student leave requests." />
+      <PageHeader title="Leaves / Out-Passes" subtitle="Approve requests and track student movement." />
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />
         <TableSearchBar query={query} onQuery={setQuery} placeholder="Search..." />

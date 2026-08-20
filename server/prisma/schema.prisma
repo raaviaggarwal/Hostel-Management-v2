@@ -14,6 +14,7 @@ model User {
   email     String  @unique
   password  String
   role      String
+  tokenVersion Int @default(0)
   regNo     String?
   hostelId  Int?
   blockId   Int?
@@ -52,7 +53,6 @@ model Room {
   type            String
   seater          Int
   status          String
-  fees            Int
   medicalReserved Boolean      @default(false)
   hostel          Hostel       @relation(fields: [hostelId], references: [id])
   block           Block        @relation(fields: [blockId], references: [id])
@@ -74,9 +74,7 @@ model Student {
   blockId            Int?
   roomno             String?
   seater             Int?
-  feespm             Int?
-  feeStatus          String        @default("due")
-  outpassUsed        Int           @default(0)
+  leaveUsed          Int           @default(0)
   stayfrom           String?
   guardianName       String
   guardianRelation   String
@@ -84,13 +82,9 @@ model Student {
   active             Boolean
   allocations        Allocation[]
   complaints         Complaint[]
-  maintenanceTickets MaintenanceTicket[]
-  fees               Fee[]
   attendance         Attendance[]
   entryExit          EntryExit[]
-  outpasses          Outpass[]
   leaves             Leave[]
-  visitors           Visitor[]
   messFeedback       MessFeedback[]
   messComplaints     MessComplaint[]
   medicalIncidents   MedicalIncident[]
@@ -118,17 +112,17 @@ model Allocation {
 }
 
 model Complaint {
-  id               Int      @id @default(autoincrement())
-  complainNumber   Int
-  studentId        Int
-  studentName      String
-  complaintType    String
-  complaintDetails String
-  complaintDoc     Json?
-  complaintStatus  String?
-  registrationDate String
-  student          Student  @relation(fields: [studentId], references: [id])
-  actions          ComplaintAction[]
+  id                    Int      @id @default(autoincrement())
+  complainNumber        Int
+  studentId             Int
+  studentName           String
+  complaintType         String
+  complaintDetails      String
+  preferredVisitingHours String?
+  complaintStatus       String?
+  registrationDate      String
+  student               Student  @relation(fields: [studentId], references: [id])
+  actions               ComplaintAction[]
 }
 
 model ComplaintAction {
@@ -138,26 +132,6 @@ model ComplaintAction {
   remark          String
   postingDate     String
   complaint       Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
-}
-
-model MaintenanceTicket {
-  id           Int     @id @default(autoincrement())
-  studentId    Int
-  studentName  String
-  hostelId     Int
-  roomNo       String
-  category     String
-  subcategory  String
-  description  String
-  priority     String
-  status       String
-  assignedTo   String?
-  expectedDate String?
-  resolvedDate String?
-  createdDate  String
-  rating       Int?
-  remarks      String?
-  student      Student @relation(fields: [studentId], references: [id])
 }
 
 model InventoryItem {
@@ -183,17 +157,6 @@ model HousekeepingTask {
   rating    Int?
 }
 
-model Fee {
-  id          Int     @id @default(autoincrement())
-  studentId   Int
-  studentName String
-  amount      Int
-  dueDate     String?
-  paidDate    String?
-  status      String
-  student     Student @relation(fields: [studentId], references: [id])
-}
-
 model Attendance {
   id        Int    @id @default(autoincrement())
   studentId Int
@@ -211,24 +174,8 @@ model EntryExit {
   gate           String
   status         String
   lateMinutes    Int    @default(0)
-  linkedOutpassId Int?
+  linkedLeaveId  Int?
   student        Student @relation(fields: [studentId], references: [id])
-}
-
-model Outpass {
-  id            Int     @id @default(autoincrement())
-  studentId     Int
-  studentName   String
-  passNo        Int
-  destination   String
-  reason        String
-  departure     String
-  expectedReturn String
-  actualReturn  String?
-  parentApproved Boolean
-  wardenApproved Boolean
-  status        String
-  student       Student @relation(fields: [studentId], references: [id])
 }
 
 model Notice {
@@ -253,21 +200,9 @@ model Leave {
   destination     String
   parentApproved  Boolean
   status          String
+  departure       String?
+  actualReturn    String?
   student         Student @relation(fields: [studentId], references: [id])
-}
-
-model Visitor {
-  id          Int     @id @default(autoincrement())
-  studentId   Int
-  studentName String
-  visitorName String
-  relation    String
-  date        String
-  inTime      String?
-  outTime     String?
-  purpose     String
-  status      String
-  student     Student @relation(fields: [studentId], references: [id])
 }
 
 model MessMenu {
@@ -355,13 +290,17 @@ model CommitteeMeeting {
 }
 
 model AuditLog {
-  id        Int    @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   actor     String
+  actorId   Int?
+  actorRole String?
   action    String
   entity    String
   target    String
   before    String
   after     String
+  ip        String?
+  userAgent String?
   timestamp String
 }
 
@@ -371,17 +310,18 @@ model Notification {
   description String
   read        Boolean
   date        String
+  audience    String  @default("all")
+  category    String  @default("info")
+  userId      Int?
 }
 
 model Setting {
-  id              Int    @id @default(autoincrement())
-  hostelName      String
-  feeDeadline     String
-  maintenanceDay  String
-  messDinnerTime  String
-  wardenContact   String
-  summerInTime    String
-  winterInTime    String
-  girlsInTime     String
-  outpassTotal    Int
+  id             Int    @id @default(autoincrement())
+  hostelName     String
+  messDinnerTime String
+  wardenContact  String
+  summerInTime   String
+  winterInTime   String
+  girlsInTime    String
+  leaveTotal     Int
 }

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd'
-import { DownloadOutlined, WalletOutlined, BugOutlined, TeamOutlined, ToolOutlined, LikeOutlined } from '@ant-design/icons'
+import { DownloadOutlined, BugOutlined, TeamOutlined, LikeOutlined } from '@ant-design/icons'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
-import { downloadCsv, formatCurrency } from '../../utils/format'
+import { downloadCsv } from '../../utils/format'
 
 const EXPORTS = {
   students: { endpoint: '/students' },
-  fees: { endpoint: '/fees' },
   complaints: {
     endpoint: '/complaints',
     columns: [
@@ -17,35 +16,6 @@ const EXPORTS = {
       { key: 'complaintDetails', label: 'Details' },
       { key: 'complaintStatus', label: 'Status' },
       { key: 'registrationDate', label: 'Registered On' },
-    ],
-  },
-  maintenance: {
-    endpoint: '/maintenance',
-    columns: [
-      { key: 'id', label: 'Ticket ID' },
-      { key: 'studentName', label: 'Student' },
-      { key: 'roomNo', label: 'Room' },
-      { key: 'category', label: 'Category' },
-      { key: 'description', label: 'Description' },
-      { key: 'priority', label: 'Priority' },
-      { key: 'status', label: 'Status' },
-      { key: 'assignedTo', label: 'Assigned To' },
-      { key: 'createdDate', label: 'Raised On' },
-      { key: 'resolvedDate', label: 'Resolved On' },
-      { key: 'rating', label: 'Rating' },
-    ],
-  },
-  visitors: {
-    endpoint: '/visitors',
-    columns: [
-      { key: 'visitorName', label: 'Visitor' },
-      { key: 'relation', label: 'Relation' },
-      { key: 'studentName', label: 'Student' },
-      { key: 'date', label: 'Date' },
-      { key: 'inTime', label: 'In Time' },
-      { key: 'outTime', label: 'Out Time' },
-      { key: 'purpose', label: 'Purpose' },
-      { key: 'status', label: 'Status' },
     ],
   },
   inventory: {
@@ -140,23 +110,8 @@ export default function Reports() {
               </Button>
             </Col>
             <Col>
-              <Button icon={<DownloadOutlined />} onClick={() => download('fees')}>
-                Fees
-              </Button>
-            </Col>
-            <Col>
               <Button icon={<DownloadOutlined />} onClick={() => download('complaints')}>
                 Complaints
-              </Button>
-            </Col>
-            <Col>
-              <Button icon={<DownloadOutlined />} onClick={() => download('maintenance')}>
-                Maintenance
-              </Button>
-            </Col>
-            <Col>
-              <Button icon={<DownloadOutlined />} onClick={() => download('visitors')}>
-                Visitors
               </Button>
             </Col>
             <Col>
@@ -184,35 +139,6 @@ export default function Reports() {
       />
 
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Total Fees"
-              value={report.feeSummary.total}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Collected"
-              value={report.feeSummary.collected}
-              valueStyle={{ color: '#1B8A6B' }}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Pending"
-              value={report.feeSummary.pending}
-              valueStyle={{ color: '#C0392B' }}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
         <Col xs={24} sm={12} md={6}>
           <Card size="small">
             <Statistic title="Total Complaints" value={report.totalComplaints} prefix={<BugOutlined />} />
@@ -258,45 +184,6 @@ export default function Reports() {
         </Col>
         <Col xs={24} sm={12} md={6}>
           <Card size="small">
-            <Statistic
-              title="Campus Fees"
-              value={formatCurrency(report.feeByCampus.campus)}
-              valueStyle={{ color: '#04335C' }}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Off-Campus Fees"
-              value={formatCurrency(report.feeByCampus['off-campus'])}
-              valueStyle={{ color: '#5A67D8' }}
-              prefix={<WalletOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Open Maintenance"
-              value={report.maintenanceSummary.open}
-              valueStyle={{ color: '#C0392B' }}
-              prefix={<ToolOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Maintenance Rating"
-              value={report.maintenanceSummary.avgRating}
-              prefix={<LikeOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
             <Statistic title="Mess Rating" value={report.messRating} prefix={<LikeOutlined />} />
           </Card>
         </Col>
@@ -326,7 +213,6 @@ export default function Reports() {
           <Card
             size="small"
             title="Complaints by Type"
-            extra={<Typography.Text strong>{formatCurrency(report.feeSummary.pending)} pending</Typography.Text>}
           >
             <Table
               rowKey="type"

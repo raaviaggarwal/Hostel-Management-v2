@@ -32,7 +32,6 @@ to work on it.
   | Mess manager | `mess` | `mess123` |
   | Security | `security` | `security123` |
   | Housekeeping | `housekeeping` | `house123` |
-  | Maintenance staff | `maintenance` | `main123` |
   | Parent | `parent` | `parent123` |
 
 - **Verification**: after every change run the client gate (`npm run test`,

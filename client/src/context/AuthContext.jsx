@@ -8,6 +8,7 @@ import {
   SESSION_DURATION,
   readUser,
 } from './auth'
+import { authApi } from '../api/client'
 
 function isSessionValid() {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -45,6 +46,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const logout = useCallback(() => {
+    authApi.logout().catch(() => {})
     clearSession()
   }, [clearSession])
 

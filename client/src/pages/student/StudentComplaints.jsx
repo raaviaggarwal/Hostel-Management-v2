@@ -1,19 +1,17 @@
 import { useState } from 'react'
-import { App as AntApp, Button, Card, Descriptions, Drawer, Form, Input, Select, Space, Timeline, Typography, Upload } from 'antd'
-import { EyeOutlined, UploadOutlined } from '@ant-design/icons'
+import { App as AntApp, Button, Card, Descriptions, Drawer, Form, Input, Select, Space, Timeline, Typography } from 'antd'
+import { EyeOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
 import TableSearchBar from '../../components/TableSearchBar'
-import AttachmentLink from '../../components/AttachmentLink'
 import { useTableFilter } from '../../hooks/useTableFilter'
 import { formatDateTime } from '../../utils/format'
 
-const TYPES = ['Electrical', 'Plumbing', 'Food Related', 'Carpentry', 'Cleaning', 'Internet', 'Other']
-const ACCEPT_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf']
-const MAX_BYTES = 2 * 1024 * 1024
+const TYPES = ['Electrical', 'Plumbing', 'Carpentry', 'Room', 'Furniture', 'Internet', 'Other']
+const VISITING_HOURS = ['Morning', '10-12', '14-16', '16-18']
 
 export default function StudentComplaints() {
   const { message } = AntApp.useApp()
@@ -22,42 +20,21 @@ export default function StudentComplaints() {
   const [viewing, setViewing] = useState(null)
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
-  const [fileList, setFileList] = useState([])
 
   const { data, loading, reload } = useResource('/student/complaints')
 
-  const { query, setQuery, filtered } = useTableFilter(data, ['complaintType', 'complaintDetails'])
-
-  const attachmentFile = fileList[0]?.originFileObj
-
-  const beforeUpload = (file) => {
-    if (!ACCEPT_TYPES.includes(file.type)) {
-      message.error('Only images or PDFs are allowed')
-      return Upload.LIST_IGNORE
-    }
-    if (file.size > MAX_BYTES) {
-      message.error('File too large (max 2 MB)')
-      return Upload.LIST_IGNORE
-    }
-    return false
-  }
+  const { query, setQuery, filtered } = useTableFilter(data, ['complaintType', 'complaintDetails', 'preferredVisitingHours'])
 
   const handleSubmit = async (values) => {
     setSubmitting(true)
     try {
-      let complaintDoc = null
-      if (attachmentFile) {
-        const uploaded = await resourceApi.upload('/upload', attachmentFile)
-        complaintDoc = { name: uploaded.name, url: uploaded.url }
-      }
       await resourceApi.post('/complaints', {
         complaintType: values.complaintType,
         complaintDetails: values.complaintDetails,
-        complaintDoc,
+        preferredVisitingHours: values.preferredVisitingHours,
       })
       message.success('Complaint registered')
       form.resetFields()
-      setFileList([])
       reload()
     } catch (error) {
       message.error(error.message)
@@ -83,6 +60,7 @@ export default function StudentComplaints() {
     { title: 'Complaint No', dataIndex: 'complainNumber' },
     { title: 'Type', dataIndex: 'complaintType' },
     { title: 'Details', dataIndex: 'complaintDetails', ellipsis: true },
+    { title: 'Preferred Visiting Hours', dataIndex: 'preferredVisitingHours' },
     { title: 'Registered On', dataIndex: 'registrationDate', render: (v) => formatDateTime(v) },
     { title: 'Status', dataIndex: 'complaintStatus', render: (v) => <StatusTag status={v} /> },
     {
@@ -108,23 +86,18 @@ export default function StudentComplaints() {
             <Select placeholder="Select type" options={TYPES.map((t) => ({ label: t, value: t }))} />
           </Form.Item>
           <Form.Item
+            name="preferredVisitingHours"
+            label="Preferred Visiting Hours"
+            rules={[{ required: true, message: 'Select preferred visiting hours' }]}
+          >
+            <Select placeholder="Select hours" options={VISITING_HOURS.map((h) => ({ label: h, value: h }))} />
+          </Form.Item>
+          <Form.Item
             name="complaintDetails"
             label="Details"
             rules={[{ required: true, message: 'Describe the issue' }]}
           >
             <Input.TextArea rows={3} placeholder="Describe the issue" />
-          </Form.Item>
-          <Form.Item label="Attachment (optional)">
-            <Upload
-              fileList={fileList}
-              maxCount={1}
-              accept=".png,.jpg,.jpeg,.gif,.webp,.pdf"
-              beforeUpload={beforeUpload}
-              onChange={({ fileList: next }) => setFileList(next)}
-              onRemove={() => setFileList([])}
-            >
-              <Button icon={<UploadOutlined />}>Choose file</Button>
-            </Upload>
           </Form.Item>
           <Button type="primary" htmlType="submit" loading={submitting}>
             Register Complaint
@@ -149,6 +122,9 @@ export default function StudentComplaints() {
           <>
             <Descriptions column={1} bordered size="small" style={{ marginBottom: 16 }}>
               <Descriptions.Item label="Type">{viewing.complaintType}</Descriptions.Item>
+              <Descriptions.Item label="Preferred Visiting Hours">
+                {viewing.preferredVisitingHours}
+              </Descriptions.Item>
               <Descriptions.Item label="Status">
                 <StatusTag status={viewing.complaintStatus} />
               </Descriptions.Item>
@@ -156,9 +132,6 @@ export default function StudentComplaints() {
                 {formatDateTime(viewing.registrationDate)}
               </Descriptions.Item>
               <Descriptions.Item label="Details">{viewing.complaintDetails}</Descriptions.Item>
-              <Descriptions.Item label="Attachment">
-                <AttachmentLink doc={viewing.complaintDoc} />
-              </Descriptions.Item>
             </Descriptions>
 
             <Typography.Title level={5}>Action History</Typography.Title>

@@ -22,7 +22,7 @@ export default function SecurityEntryExit() {
   const [submitting, setSubmitting] = useState(false)
   const { data, loading, reload } = useResource('/entry-exit')
   const { data: students } = useResource('/students')
-  const { data: outpasses } = useResource('/security/outpasses')
+  const { data: leaves } = useResource('/leaves')
 
   const { query, setQuery, filtered } = useTableFilter(data, ['studentId', 'gate'])
 
@@ -33,9 +33,9 @@ export default function SecurityEntryExit() {
       today: data.filter((e) => e.date === todayLocal()).length,
       late: data.filter((e) => e.status === 'late').length,
       violations: data.filter((e) => e.status === 'violation').length,
-      outside: outpasses.filter((o) => o.status === 'active').length,
+      outside: leaves.filter((l) => l.status === 'active').length,
     }),
-    [data, outpasses]
+    [data, leaves]
   )
 
   const handleRecord = async (values) => {

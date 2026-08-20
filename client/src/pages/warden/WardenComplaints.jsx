@@ -51,6 +51,7 @@ export default function WardenComplaints() {
     'studentName',
     'complaintType',
     'complaintDetails',
+    'preferredVisitingHours',
   ])
 
   const openView = async (complaint) => {
@@ -89,6 +90,7 @@ export default function WardenComplaints() {
     { title: 'Student', dataIndex: 'studentName' },
     { title: 'Type', dataIndex: 'complaintType' },
     { title: 'Details', dataIndex: 'complaintDetails', ellipsis: true },
+    { title: 'Preferred Visiting Hours', dataIndex: 'preferredVisitingHours', width: 120 },
     { title: 'Registered On', dataIndex: 'registrationDate', render: (v) => formatDateTime(v) },
     { title: 'Status', dataIndex: 'complaintStatus', render: (v) => <StatusTag status={v} /> },
     {
@@ -132,6 +134,9 @@ export default function WardenComplaints() {
                 {formatDateTime(viewing.registrationDate)}
               </Descriptions.Item>
               <Descriptions.Item label="Details">{viewing.complaintDetails}</Descriptions.Item>
+              <Descriptions.Item label="Preferred Visiting Hours">
+                {viewing.preferredVisitingHours}
+              </Descriptions.Item>
             </Descriptions>
 
             <Card

@@ -3,7 +3,6 @@ import { Card, Col, Row, Skeleton, Statistic } from 'antd'
 import {
   SwapOutlined,
   LogoutOutlined,
-  CarOutlined,
   WarningOutlined,
 } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
@@ -18,8 +17,7 @@ const todayLocal = () => {
 
 export default function SecurityDashboard() {
   const { data: punches, loading } = useResource('/entry-exit')
-  const { data: outpasses } = useResource('/security/outpasses')
-  const { data: visitors } = useResource('/visitors')
+  const { data: leaves } = useResource('/leaves')
 
   const stats = useMemo(() => {
     const today = punches.filter((e) => e.date === todayLocal())
@@ -27,17 +25,15 @@ export default function SecurityDashboard() {
       today: today.length,
       late: punches.filter((e) => e.status === 'late').length,
       violations: punches.filter((e) => e.status === 'violation').length,
-      activePasses: outpasses.filter((o) => o.status === 'active').length,
-      pendingVisitors: visitors.filter((v) => v.status === 'pending').length,
-      checkedIn: visitors.filter((v) => v.status === 'checked-in').length,
+      activeLeaves: leaves.filter((l) => l.status === 'active').length,
     }
-  }, [punches, outpasses, visitors])
+  }, [punches, leaves])
 
   if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
 
   return (
     <>
-      <PageHeader title="Security Dashboard" subtitle="Gate control, visitors and out-pass verification." />
+      <PageHeader title="Security Dashboard" subtitle="Gate control and out-pass verification." />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} md={6}>
@@ -69,29 +65,9 @@ export default function SecurityDashboard() {
           <Card size="small">
             <Statistic
               title="Students Outside"
-              value={stats.activePasses}
+              value={stats.activeLeaves}
               valueStyle={{ color: '#04335C' }}
               prefix={<LogoutOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Pending Visitors"
-              value={stats.pendingVisitors}
-              valueStyle={{ color: '#C9820A' }}
-              prefix={<CarOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <Card size="small">
-            <Statistic
-              title="Visitors On Campus"
-              value={stats.checkedIn}
-              valueStyle={{ color: '#1B8A6B' }}
-              prefix={<CarOutlined />}
             />
           </Card>
         </Col>

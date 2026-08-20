@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { App as AntApp, Button, Card, DatePicker, Form, Input, Tabs } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { App as AntApp, Button, Card, Col, DatePicker, Form, Input, Row, Statistic, Tabs } from 'antd'
 import dayjs from 'dayjs'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
@@ -13,6 +13,8 @@ const TABS = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'approved', label: 'Approved' },
+  { key: 'active', label: 'Active' },
+  { key: 'completed', label: 'Completed' },
   { key: 'rejected', label: 'Rejected' },
 ]
 
@@ -21,11 +23,29 @@ export default function StudentLeave() {
   const [form] = Form.useForm()
   const [tab, setTab] = useState('all')
   const [submitting, setSubmitting] = useState(false)
+  const [quota, setQuota] = useState(12)
   const { data, loading, reload } = useResource('/student/leaves')
+
+  useEffect(() => {
+    resourceApi
+      .get('/settings')
+      .then((s) => setQuota(s.leaveTotal || 12))
+      .catch(() => {})
+  }, [])
+
+  const used = useMemo(
+    () => data.filter((l) => ['approved', 'active', 'completed'].includes(l.status)).length,
+    [data]
+  )
+  const active = data.find((l) => l.status === 'active')
+  const hasOpen = data.some((l) => ['pending', 'approved', 'active'].includes(l.status))
 
   const filtered = tab === 'all' ? data : data.filter((l) => l.status === tab)
 
-  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, ['reason', 'destination'])
+  const { query, setQuery, filtered: searchFiltered } = useTableFilter(filtered, [
+    'reason',
+    'destination',
+  ])
 
   const handleSubmit = async (values) => {
     setSubmitting(true)
@@ -51,12 +71,40 @@ export default function StudentLeave() {
     { title: 'To', dataIndex: 'to' },
     { title: 'Destination', dataIndex: 'destination', render: (v) => v || '-' },
     { title: 'Reason', dataIndex: 'reason', ellipsis: true },
+    { title: 'Departure', dataIndex: 'departure', render: (v) => v || '-' },
+    { title: 'Actual Return', dataIndex: 'actualReturn', render: (v) => v || '-' },
     { title: 'Status', dataIndex: 'status', render: (v) => <StatusTag status={v} /> },
   ]
 
   return (
     <>
-      <PageHeader title="Leave" subtitle="Request leave and track its approval." />
+      <PageHeader title="Leave / Out-Pass" subtitle="Request leave and track your departures and returns." />
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={8}>
+          <Card size="small">
+            <Statistic title="Leaves Used" value={used} suffix={`/ ${quota}`} />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card size="small">
+            <Statistic
+              title="Remaining"
+              value={Math.max(0, quota - used)}
+              valueStyle={{ color: used >= quota ? '#C0392B' : '#1B8A6B' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={8}>
+          <Card size="small">
+            <Statistic
+              title="Currently Out"
+              value={active ? 'Yes' : 'No'}
+              valueStyle={{ color: active ? '#C0392B' : '#1B8A6B' }}
+            />
+          </Card>
+        </Col>
+      </Row>
 
       <Card title="Request Leave" style={{ marginBottom: 16, maxWidth: 560 }}>
         <Form form={form} layout="vertical" onFinish={handleSubmit}>
@@ -81,8 +129,8 @@ export default function StudentLeave() {
           >
             <Input placeholder="Where are you going?" />
           </Form.Item>
-          <Button type="primary" htmlType="submit" loading={submitting}>
-            Submit Request
+          <Button type="primary" htmlType="submit" loading={submitting} disabled={hasOpen}>
+            {hasOpen ? 'You have an open request' : 'Submit Request'}
           </Button>
         </Form>
       </Card>

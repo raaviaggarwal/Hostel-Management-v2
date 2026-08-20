@@ -9,8 +9,7 @@ The system is a **client + server** split (Phase 6 of the roadmap):
   in production, Express serves the built `client/dist` (static files + SPA
   fallback to `index.html` for non-`/api` GET routes) from the same origin.
 - `server/` — an Express REST API backed by **PostgreSQL via Prisma**,
-  authenticating users with **JWT** and serving real multipart uploads via
-  **multer**.
+  authenticating users with **JWT**.
 
 The earlier MSW (Mock Service Worker) layer has been removed — the browser
 mocks, the in-memory store and the client-side API tests were deleted when the
@@ -39,8 +38,7 @@ Vite dev proxy (/api)  ──►  Express server (server/src/app.js)
 | Security | helmet + express-rate-limit | headers, CORS allowlist, rate limits in production |
 | ORM | Prisma 6 | schema-first, PostgreSQL; client generated into `node_modules` |
 | Database | PostgreSQL 17 | connection via `DATABASE_URL` in `server/.env` |
-| Auth | jsonwebtoken + bcryptjs | JWT `{ sub, role }`; bcrypt-hashed passwords (round 4) |
-| Uploads | multer | memory storage, 2 MB limit, `Data URL` stored in `Json` |
+| Auth | jsonwebtoken + bcryptjs | JWT `{ sub, role, ver }` (issuer/audience/jti); bcrypt-hashed passwords (cost 10, configurable via `BCRYPT_ROUNDS`) |
 | Client tests | Vitest 4 + jsdom + Testing Library | `pool: 'threads'` (see development workflow) |
 | Server tests | Vitest 4 + supertest | runs the Express app against real Prisma/PostgreSQL |
 | Linting | oxlint (client) / `node --check` (server) | via `npm run lint` |
@@ -77,7 +75,8 @@ server
 ├── prisma/
 │   ├── schema.prisma      # all models (User, Hostel, Block, Room, Student, …)
 │   ├── seed.js            # seedDatabase(prisma) + resetSequences(prisma), direct-run guard
-│   └── migrations/        # 20260816000000_init + 20260818042235_fee_due_date_optional + migration_lock.toml
+│   └── migrations/        # init, fee_due_date_optional, phase1_complaints, phase2_remove_maintenance,
+│   │                      #   phase3_remove_visitors, phase4_remove_fees + migration_lock.toml
 ├── src/
 │   ├── index.js           # entry: loads dotenv, listens on PORT || 5000
 │   ├── app.js             # createApp(): helmet, cors, json({limit:'2mb'}), rate limits,
@@ -87,7 +86,7 @@ server
 │   └── routes/
 │       └── index.js       # the whole REST API (all ~120 endpoints)
 ├── tests/
-│   └── api.test.js        # supertest API tests (68 tests, reseeds DB per test)
+│   └── api.test.js        # supertest API tests (66 tests, reseeds DB per test)
 ├── vitest.config.js       # pool: 'threads', environment node, test/hook timeout 60000
 ├── .env / .env.example    # DATABASE_URL, JWT_SECRET, PORT
 └── package.json           # dev/start/migrate/seed/test/lint scripts
@@ -100,18 +99,20 @@ server
 Prisma models mirror the shape the client expects. Notable decisions:
 
 - **Denormalized `studentName`** kept on records that the UI lists standalone
-  (allocations, fees, entry-exit, visitors, mess feedback, etc.).
-- `history`, `hostelPrefs`, `issues`, `decisions`, `actionItems` and
-  `complaintDoc` are Prisma `Json` columns.
+  (allocations, entry-exit, mess feedback, etc.).
+- `history`, `hostelPrefs`, `issues`, `decisions`, `actionItems` are Prisma
+  `Json` columns.
 - **No Warden table** — wardens are just `User`s with a warden role
   (`WARDEN_ROLES`); `GET /wardens` returns warden-role users with `password`
   stripped.
 - **No `Room.occupants`** — room occupancy is derived by counting `Student`s
   with that `roomId`.
 - `User.blockId`, `User.hostelId`, `User.studentId` scope staff portals
-  (housekeeping/maintenance/caretaker by hostel).
-- `Complaint.complaintDoc` is `Json?` storing `{ name, url }` (url is a
-  `data:` URL from `/api/upload`).
+  (housekeeping/caretaker by hostel).
+- `Complaint.preferredVisitingHours` is the time slot a student picks on the
+  complaint form (Morning / 10-12 / 14-16 / 16-18); complaints use the
+  maintenance-style categories (Electrical, Plumbing, Carpentry, Room,
+  Furniture, Internet, Other).
 
 The initial migration SQL was generated offline with
 `prisma migrate diff --from-empty` and committed under
@@ -130,11 +131,14 @@ functions (used by the tests) and only seeds directly when executed by `node`
 
 - `POST /api/auth/login` returns `{ token, user }`; token is a JWT signed with
   `JWT_SECRET` (`server/.env`, default `dev-secret` in dev; **required** when
-  `NODE_ENV=production`) containing `{ sub, role }`.
+  `NODE_ENV=production`) containing `{ sub, role, ver }` plus issuer/audience
+  claims and a unique `jti` (expiry `JWT_EXPIRES_IN`, default 24 h).
 - The client stores `token`, `sessionExpiry` (24 h) and `user` in
   `localStorage` (`AuthContext`).
 - Every request sends `Authorization: Bearer <token>`; the server resolves the
-  user from the JWT `sub`.
+  user from the JWT `sub` and rejects tokens whose `ver` no longer matches the
+  user's `tokenVersion` (incremented by `POST /auth/logout` to invalidate all
+  sessions server-side).
 - Helper guards mirror the old mock helpers: `getUser`, `adminUser`,
   `wardenUser`, `roleUser`, `messUser`, `staffHostelUser`, `guardUser`,
   `parentUser`, `studentScope` (all async, in `routes/index.js`).
@@ -154,7 +158,6 @@ Role-to-portal mapping lives in `client/src/routes/navigation.jsx`
 | `mess_manager` | mess | `/mess/dashboard` |
 | `security` | security | `/security/dashboard` |
 | `housekeeping` | housekeeping | `/housekeeping/dashboard` |
-| `maintenance_staff` | maintenance | `/maintenance/dashboard` |
 | `parent` | parent | `/parent/dashboard` |
 
 All nine portals are fully built. Portal routes live in `routes/PortalRoutes.jsx`;
@@ -162,8 +165,10 @@ staff portals are scoped server-side by `hostelId` where applicable.
 
 ## API surface (endpoints by module)
 
-**Auth**: `POST /auth/login`, `GET /auth/me`
-**Notifications**: `GET /notifications`, `POST /notifications/read-all`,
+**Auth**: `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`
+**Notifications**: `GET /notifications` (scoped to the requester's audience:
+admin sees all; wardens see `all`/`wardens`/their hostel + direct; students see
+`all`/`students` + direct), `POST /notifications/read-all`,
 `POST /notifications/:id/read`
 **Dashboards**: `GET /admin/dashboard`, `GET /warden/dashboard`,
 `GET /student/dashboard`, `GET /student/profile`
@@ -184,42 +189,38 @@ staff portals are scoped server-side by `hostelId` where applicable.
 `GET /complaints/:id/history`, `POST /complaints/:id/action`,
 `GET /student/complaints` — history maps mock field names
 (`complaintid`, `compalintStatus`, `complaintRemark`, `postingDate`)
-**Leaves**: `GET /leaves`, `GET /student/leaves`, `POST /leaves`,
-`POST /leaves/:id/decision`
-**Out-passes**: `GET /outpasses` (admin all / warden scoped),
-`GET /student/outpasses`, `POST /outpasses` (student, quota + one-open check),
-`POST /outpasses/:id/decision` (warden), `POST /outpasses/:id/activate`,
-`POST /outpasses/:id/complete`
+**Leaves / Out-passes**: `GET /leaves` (admin all / warden scoped),
+`GET /student/leaves`, `POST /leaves` (student, quota `settings.leaveTotal` +
+one-open check), `POST /leaves/:id/decision` (warden), `POST /leaves/:id/activate`,
+`POST /leaves/:id/complete`
 **Entry / exit**: `GET /entry-exit` (admin all / warden scoped, `?studentId`,
 `?date`), `GET /student/entry-exit`, `POST /entry-exit` (warden / admin /
-security) — auto-links approved→active / active→completed out-passes and
+security) — auto-links approved→active / active→completed leaves and
 computes `late` / `violation` from in-times
-**Visitors**: `GET /visitors`, `GET /student/visitors`, `POST /visitors`,
-`PUT /visitors/:id` (admin / warden / security / caretaker),
-`POST /visitors/:id/checkin`, `POST /visitors/:id/checkout`
 **Mess**: `GET /mess-menu`, `PUT /mess-menu/:id` (mess manager / warden / admin),
 `GET/POST /mess/feedback`, `GET /student/mess/feedback`, `GET/POST
 /mess/complaints`, `GET /student/mess/complaints`, `PUT /mess/complaints/:id`
 (mess manager / warden / admin), `GET/POST /mess/inspections`
-**Upload**: `POST /upload` (multer, 2 MB, images/PDF → `{ url }` data URL)
-**Security**: `GET /security/outpasses` (approved + active out-passes)
-**Maintenance / housekeeping**: `GET /maintenance`, `GET /housekeeping`
-(admin all / warden, caretaker, housekeeping, maintenance_staff scoped by
+**Complaints**: `GET /complaints` (admin all / warden scoped), `POST /complaints`
+(student; stores `preferredVisitingHours`), `POST /complaints/:id/action`,
+`GET /complaints/:id/history`, `GET /student/complaints`
+**Security**: outside count from `GET /leaves` (active leaves)
+**Housekeeping**: `GET /housekeeping`
+(admin all / warden, caretaker, housekeeping scoped by
 `hostelId`), writes guarded by role
 **Committee**: `GET /committee`, `POST /committee/meetings`,
 `PUT /committee/meetings/:id` (admin / warden)
-**Audit logs**: `GET /audit-logs` (admin only)
-**Parent portal**: `GET /parent/ward` (linked ward + fees + attendance + leaves +
-out-passes + notices)
-**Fees**: `GET/POST/PUT /fees`, `GET /student/fees`, `POST /student/fees/:id/pay`
-— `POST /fees` defaults the amount to the off-campus slab (₹70,000) for
-off-campus hostels
+**Audit logs**: `GET /audit-logs` (admin only; optional `?actor=`, `?entity=`,
+`?action=`, `?date=` filters) — entries carry `actorId`/`actorRole` plus the
+requester `ip`/`user-agent`
+**Parent portal**: `GET /parent/ward` (linked ward + attendance + leaves +
+notices)
 **Attendance**: `GET /attendance`, `GET/PUT /warden/attendance/register`,
 `GET /student/attendance`
 **Notices**: `GET/POST/PUT/DELETE /notices` (student calls are filtered by
 `audience`: `all`/`students`, `girls`, `boys`)
-**Reports/Settings**: `GET /admin/reports` (fee summary + fee-by-campus +
-occupancy + complaints by type + maintenance summary + mess rating),
+**Reports/Settings**: `GET /admin/reports` (occupancy + complaints by type +
+mess rating),
 `GET/PUT /settings`
 
 ## Client data fetching
@@ -229,12 +230,9 @@ occupancy + complaints by type + maintenance summary + mess rating),
   application/json` unless the body is `FormData`, and throws `Error` with the
   server `message` on non-OK responses.
 - `resourceApi`: `get`, `getById`, `post`, `create`, `patch`, `update`,
-  `remove`, `upload` (`upload(path, file)` posts a `FormData`).
+  `remove`.
 - `useResource(path)`: loads an array from `path` on mount; returns
   `{ data, setData, loading, error, reload }`.
-- Uploads: `POST /api/upload` (multer) returns `{ url }` — a `data:` URL the
-  client stores on the complaint as `complaintDoc: { name, url }`, rendered by
-  `components/AttachmentLink.jsx`.
 - CSV: `utils/format.js` exports pure `buildCsv(rows, columns)` plus
   `downloadCsv(filename, rows, columns)` wrapper.
 

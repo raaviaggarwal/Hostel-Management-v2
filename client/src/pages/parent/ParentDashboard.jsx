@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Card, Col, Descriptions, List, Row, Skeleton, Tag, Typography } from 'antd'
+import { Card, Col, Descriptions, List, Row, Skeleton, Typography } from 'antd'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 import StatusTag from '../../components/StatusTag'
-import { formatCurrency, formatDate } from '../../utils/format'
+import { formatDate } from '../../utils/format'
 
 export default function ParentDashboard() {
   const [data, setData] = useState(null)
@@ -32,7 +32,7 @@ export default function ParentDashboard() {
     )
   }
 
-  const { student, fees, attendance, leaves, outpasses, notices } = data
+  const { student, attendance, leaves, notices } = data
 
   return (
     <>
@@ -47,9 +47,6 @@ export default function ParentDashboard() {
               <Descriptions.Item label="Course">{student.course}</Descriptions.Item>
               <Descriptions.Item label="Year">{student.year}</Descriptions.Item>
               <Descriptions.Item label="Room">{student.roomno || 'Not allocated'}</Descriptions.Item>
-              <Descriptions.Item label="Fees (pm)">
-                {student.feespm ? formatCurrency(student.feespm) : '-'}
-              </Descriptions.Item>
               <Descriptions.Item label="Status">
                 <StatusTag status={student.active ? 'active' : 'inactive'} />
               </Descriptions.Item>
@@ -58,30 +55,7 @@ export default function ParentDashboard() {
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card size="small" title="Fees">
-            <List
-              size="small"
-              dataSource={fees}
-              renderItem={(f) => (
-                <List.Item
-                  actions={[
-                    f.status === 'paid' ? (
-                      <Tag key="paid" color="green">Paid</Tag>
-                    ) : (
-                      <Tag key="status" color="orange">{f.status}</Tag>
-                    ),
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={`${formatCurrency(f.amount)}`}
-                    description={`Due ${formatDate(f.dueDate)}`}
-                  />
-                </List.Item>
-              )}
-            />
-          </Card>
-
-          <Card size="small" title="Notices" style={{ marginTop: 16 }}>
+          <Card size="small" title="Notices">
             <List
               size="small"
               dataSource={notices}
@@ -127,23 +101,6 @@ export default function ParentDashboard() {
                         description={l.reason}
                       />
                       <StatusTag status={l.status} />
-                    </List.Item>
-                  )}
-                />
-              </Card>
-            </Col>
-            <Col xs={24} md={12}>
-              <Card size="small" title="Out-Passes">
-                <List
-                  size="small"
-                  dataSource={outpasses}
-                  renderItem={(o) => (
-                    <List.Item>
-                      <List.Item.Meta
-                        title={`${o.destination} (${formatDate(o.departure)})`}
-                        description={o.reason}
-                      />
-                      <StatusTag status={o.status} />
                     </List.Item>
                   )}
                 />

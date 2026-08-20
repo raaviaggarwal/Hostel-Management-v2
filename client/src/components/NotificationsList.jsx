@@ -5,6 +5,8 @@ import { resourceApi } from '../api/client'
 import { useNotifications } from '../context/notifications'
 import PageHeader from './PageHeader'
 
+const CATEGORY_COLORS = { info: 'blue', success: 'green', warning: 'orange', alert: 'red' }
+
 export default function NotificationsList() {
   const { message } = AntApp.useApp()
   const { data, loading, reload } = useResource('/notifications')
@@ -70,6 +72,7 @@ export default function NotificationsList() {
                   title={
                     <Space wrap>
                       <Typography.Text strong={!item.read}>{item.title}</Typography.Text>
+                      <Tag color={CATEGORY_COLORS[item.category] || 'default'}>{item.category}</Tag>
                       {!item.read && <Tag color="red">Unread</Tag>}
                     </Space>
                   }

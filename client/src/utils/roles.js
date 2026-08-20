@@ -8,7 +8,6 @@ export const ROLE_COLOR = {
   mess_manager: 'magenta',
   security: 'red',
   housekeeping: 'lime',
-  maintenance_staff: 'volcano',
   student: 'green',
   parent: 'pink',
 }

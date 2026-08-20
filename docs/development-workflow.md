@@ -52,6 +52,9 @@ When `NODE_ENV=production`, the server additionally:
   start` in `server/` serves `client/dist` statically and falls back to
   `index.html` for non-`/api` GET routes (single-origin SPA).
 - **Requires `JWT_SECRET`** — the server fails fast at startup if it is unset.
+  JWT claims carry issuer/audience and a per-user `ver`; `POST /auth/logout`
+  bumps `User.tokenVersion` to invalidate tokens server-side. bcrypt cost comes
+  from `BCRYPT_ROUNDS` (default 10; vitest overrides it to 4 for speed).
 - **Enables rate limits** — `/api` (1,000 req / 15 min per IP) and
   `/api/auth/login` (10 / 15 min per IP). Rate limits and the static/SPA
   serving are inactive in dev (`npm run dev`) and tests.
@@ -74,12 +77,12 @@ are seeded by `server/prisma/seed.js`:
 - Student: `student` / `student123` (this is **Aarav Sharma**, the first
   generated student — not Raavi). Any other student logs in with
   `firstname` / `student123` (e.g. `raavi` / `student123`).
-- Caretaker/Mess/Security/Housekeeping/Maintenance:
-  `caretaker`/`mess`/`security`/`housekeeping`/`maintenance` with their
+- Caretaker/Mess/Security/Housekeeping:
+  `caretaker`/`mess`/`security`/`housekeeping` with their
   seeded passwords.
 - Parent: `parent` / `parent123` (linked to **Raavi Aggarwal**, id 40).
 - Staff portals are hostel-scoped via the user's `hostelId`
-  (housekeeping + maintenance use hostel 5, caretaker uses hostel 2).
+  (housekeeping uses hostel 5, caretaker uses hostel 2).
 
 ## Conventions
 
@@ -109,7 +112,8 @@ are seeded by `server/prisma/seed.js`:
    - Use the auth guards (`adminUser`, `wardenUser`, `studentScope`,
      `staffHostelUser`, …) to enforce access.
    - Keep related records in sync (rooms, students, allocations).
-   - `prisma.auditLog.create(...)` for recordable actions and
+   - `logAudit(actor, action, entity, target, before, after, auditMeta(req))`
+     for recordable actions (captures `actorId`/`actorRole`/`ip`/`user-agent`) and
      `prisma.notification.create(...)` for user-visible events.
 4. **Client** — call it via `resourceApi` / `useResource`.
 5. **Test** — add cases to `server/tests/api.test.js` (supertest; reseeds the
@@ -176,9 +180,9 @@ replaced the mock layer with a real backend.
 | Slice | Focus | Status |
 | --- | --- | --- |
 | **A** | Model restructure + Hostel Allocation core + admin/warden dashboards + RBAC/portals | Done (54 tests green) |
-| **B** | Student life workflows: leave, out-pass, entry-exit (biometric), fees, notices, notifications | Done (out-pass, entry-exit, notifications, notices audience + leave destination) |
-| **C** | Service workflows: maintenance tickets, complaints, room inventory, housekeeping, mess module, Wi-Fi, medical, visitors | Done (admin maintenance/inventory/housekeeping/mess/wifi/medical/complaints/visitors + warden scoped maintenance/mess + student maintenance & mess feedback; 71 tests green) |
-| **D** | Cross-cutting: caretaker / security / housekeeping / mess / maintenance / parent portals, committee, off-campus fee logic, analytics, reports, search/filters, audit logs | Done (staff portals fully built + scoped handlers, committee, audit logs, parent ward view, off-campus fee slab, fee-by-campus + maintenance/mess metrics in reports, global table search/filters, code splitting, complaint uploads, extended CSV exports, lint cleanup; 108 tests green) |
+| **B** | Student life workflows: leave, out-pass, entry-exit (biometric), notices, notifications | Done (out-pass, entry-exit, notifications, notices audience + leave destination) |
+| **C** | Service workflows: complaints, room inventory, housekeeping, mess module, Wi-Fi, medical | Done (admin inventory/housekeeping/mess/wifi/medical/complaints + warden scoped mess + student mess feedback; 71 tests green) |
+| **D** | Cross-cutting: caretaker / security / housekeeping / mess / parent portals, committee, analytics, reports, search/filters, audit logs | Done (staff portals fully built + scoped handlers, committee, audit logs, parent ward view, mess metrics in reports, global table search/filters, code splitting, complaint preferred visiting hours, extended CSV exports, lint cleanup; 108 tests green) |
 | **Phase 6** | Backend split: Express + Prisma + PostgreSQL + JWT server, MSW removed, API tests ported to supertest | Done (server built, client rewired; 72 API tests green) |
 | **Phase 7** | Deployment readiness: async error handling, serve `client/dist`, helmet/CORS/rate limits, JWT_SECRET guard | Done (hardening tests added; 72 server tests green) |
 
@@ -197,17 +201,17 @@ Working notes:
   top of the derived list (`searchFiltered`). Students/Rooms/Wardens pages keep
   their original inline search.
 
-- **Complaint uploads**: students attach an image/PDF (max 2 MB) to a complaint.
-  `POST /api/upload` is handled by **multer** (memory storage) in
-  `server/src/routes/index.js`, returning a base64 `data:` URL. The client
-  stores it as `complaintDoc` on the complaint and renders it with
-  `components/AttachmentLink.jsx`. Multipart tests build the body as a raw
-  string buffer and send it with the `multipart/form-data` content type.
+- **Complaint preferred visiting hours**: students pick a time slot (Morning /
+  10-12 / 14-16 / 16-18) and a maintenance-style category (Electrical,
+  Plumbing, Carpentry, Room, Furniture, Internet, Other) when raising a
+  complaint. `POST /api/complaints` stores it as `preferredVisitingHours`,
+  shown to wardens and admins alongside the category. (Complaint uploads were
+  removed.)
 
 - **CSV exports**: `utils/format.js` exposes a pure `buildCsv(rows, columns)`
   (`columns = [{key,label}]`, falls back to first-row keys) that `downloadCsv`
-  wraps. `admin/Reports.jsx` exports students, fees, complaints, maintenance,
-  visitors, inventory, housekeeping, mess feedback and audit logs.
+  wraps. `admin/Reports.jsx` exports students, complaints,
+  inventory, housekeeping, mess feedback and audit logs.
 
 - **Lint hygiene**: context modules are split so `.jsx` files export only the
   `*Provider` component — hooks + constants live in `context/auth.js`,
@@ -215,20 +219,18 @@ Working notes:
   `useNotifications`). Route files keep `/* oxlint-disable react/only-export-components */`
   because they export arrays of elements. `npm run lint` is warning-free.
 
-- All nine portals (admin, warden, student, caretaker, mess, security,
-  housekeeping, maintenance, parent) are fully built. Portal routes live in
+- All eight portals (admin, warden, student, caretaker, mess, security,
+  housekeeping, parent) are fully built. Portal routes live in
   `routes/PortalRoutes.jsx`.
-- Staff portals are scoped server-side by `hostelId` (caretaker, housekeeping,
-  maintenance) or globally (security, mess). `housekeeping` and
-  `maintenance_staff` demo users use hostel 5; `caretaker` uses hostel 2.
+- Staff portals are scoped server-side by `hostelId` (caretaker, housekeeping)
+  or globally (security, mess). `housekeeping`
+  demo user uses hostel 5; `caretaker` uses hostel 2.
 - The `parent` demo account (`parent` / `parent123`) is linked to Raavi
-  Aggarwal via `studentId` and sees her profile, fees, attendance, leave and
+  Aggarwal via `studentId` and sees her profile, attendance, leave and
   out-pass history plus notices.
-- Off-campus hostels bill at ₹70,000/semester; `POST /fees` defaults to this
-  slab for off-campus students and `/admin/reports` breaks fees out by campus.
-- Out-pass status flow: `pending → approved → active → completed` (`rejected`).
-  Activation/completion auto-log an entry-exit punch linked via
-  `linkedOutpassId`; a gate punch can also drive the same transitions.
+- Leave / Out-pass status flow: `pending → approved → active → completed`
+  (`rejected`). Activation/completion auto-log an entry-exit punch linked via
+  `linkedLeaveId`; a gate punch can also drive the same transitions.
 - Entry-exit computes `late` / `violation` from `settings.girlsInTime`
   (girls) or `settings.summerInTime` (boys); >30 minutes late is a violation.
 - When building new modules, keep the server in sync: `schema.prisma`, then

@@ -35,6 +35,7 @@ export const authApi = {
   login: (payload) =>
     apiFetch('/auth/login', { method: 'POST', body: JSON.stringify(payload) }),
   me: () => apiFetch('/auth/me'),
+  logout: () => apiFetch('/auth/logout', { method: 'POST' }),
 }
 
 export const resourceApi = {
@@ -51,9 +52,4 @@ export const resourceApi = {
   update: (path, id, payload) =>
     apiFetch(`${path}/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   remove: (path, id) => apiFetch(`${path}/${id}`, { method: 'DELETE' }),
-  upload: (path, file) => {
-    const form = new FormData()
-    form.append('file', file)
-    return apiFetch(path, { method: 'POST', body: form })
-  },
 }

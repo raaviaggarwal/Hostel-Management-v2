@@ -18,7 +18,7 @@ Hostel (7)
 Student (44)
  ├── gender (male / female)
  ├── year (1 = fresher, >1 = senior)
- ├── hostelId / blockId / roomno / seater / feespm   (set when housed)
+ ├── hostelId / blockId / roomno / seater   (set when housed)
  └── active (housed and checked in)
 
 Allocation (one per student application)
@@ -99,11 +99,9 @@ new application.
   **Allocation History** (full audit trail with expandable history timeline).
 - **Students / Wardens**: CRUD; assign/change a student's room
   (`PUT /students/:id/room`).
-- **Fees / Reports / Settings / Notices**: fee records (off-campus billed at
-  the ₹70,000/semester slab), summary reports + CSV exports (fee summary,
-  fee-by-campus, occupancy, complaints by type, maintenance summary, mess
-  rating), system settings, notices, **Committee** (members + meetings) and
-  **Audit Logs** (admin-only action history).
+- **Reports / Settings / Notices**: summary reports + CSV exports (occupancy,
+  complaints by type, mess rating), system settings, notices, **Committee**
+  (members + meetings) and **Audit Logs** (admin-only action history).
 
 ### Warden
 
@@ -118,14 +116,14 @@ Scoped to their own hostel (`user.hostelId`).
 - **Rooms / Students**: room list with occupancy; assign rooms to students.
 - **Attendance**: mark daily attendance for their hostel via
   `GET/PUT /warden/attendance/register` (defaults `present`, per block/date).
-- **Out-Passes**: approve/reject requests, mark a student departed
-  (`POST /outpasses/:id/activate`) and returned (`POST /outpasses/:id/complete`);
+- **Leaves / Out-Passes**: approve/reject requests, mark a student departed
+  (`POST /leaves/:id/activate`) and returned (`POST /leaves/:id/complete`);
   both auto-log a gate punch.
 - **Entry / Exit**: record a biometric gate punch for any student
   (`POST /entry-exit`) — the API auto-flags `late`/`violation` entries and
-  drives out-pass transitions; a scoped punch log is shown.
-- **Leaves / Complaints / Visitors / Mess Menu / Notices**: manage their
-  hostel's records (approve/reject leaves, action complaints, update visitors,
+  drives leave transitions; a scoped punch log is shown.
+- **Leaves / Complaints / Mess Menu / Notices**: manage their
+  hostel's records (approve/reject leaves, action complaints,
   edit mess menu, publish notices).
 
 ### Student
@@ -134,23 +132,18 @@ Scoped to their own hostel (`user.hostelId`).
   blocked while an active application exists.
 - **Allocation** (`MyAllocation`): status timeline (Applied → Under Review →
   Approved/Waitlisted → Room Allocated → Occupied) plus full history.
-- **Profile / Dashboard**: personal details and stats (fees, complaints,
-  leaves, attendance %, out-passes left, today's mess, current allocation).
-- **Leave / Out-Pass / Entry-Exit / Complaints / Visitors / Attendance /
-  Notices / Mess Menu / Fees**: student-facing requests (leave and out-pass
-  with quota) and history (gate punches, status timelines), plus fee payment
-  (`POST /student/fees/:id/pay`).
+- **Profile / Dashboard**: personal details and stats (complaints,
+  leaves, attendance %, leaves left, today's mess, current allocation).
+- **Leave / Out-Pass / Entry-Exit / Complaints / Attendance /
+  Notices / Mess Menu**: student-facing requests (leave and out-pass
+  with quota) and history (gate punches, status timelines).
 
 ### Security
 
-- **Dashboard**: today's gate punches, late/violation counts, students outside,
-  pending + on-campus visitors.
+- **Dashboard**: today's gate punches, late/violation counts, students outside.
 - **Entry / Exit**: record a gate punch for any student (`POST /entry-exit`);
-  auto-flags `late`/`violation` and drives out-pass transitions.
-- **Visitors**: check a visitor in/out at the gate
-  (`POST /visitors/:id/checkin` / `checkout`).
-- **Out-Pass Control**: verify approved/active out-passes (`GET
-  /security/outpasses`) and mark departures/returns.
+  auto-flags `late`/`violation` and drives leave transitions; the outside
+  count comes from active leaves (`GET /leaves`).
 
 ### Mess Manager
 
@@ -166,41 +159,30 @@ Scoped to `user.hostelId`. **Dashboard** shows task totals; **Tasks** lists
 their hostel's cleaning jobs and lets staff start/complete them
 (`PUT /housekeeping/:id`).
 
-### Maintenance Staff
-
-Scoped to `user.hostelId`. **Dashboard** shows ticket totals; **Tickets** lists
-their hostel's repair jobs and lets staff start work, set expected dates,
-update status/remarks and resolve tickets (`PUT /maintenance/:id`).
-
 ### Caretaker
 
 Scoped to `user.hostelId`. **Dashboard**: total/occupied rooms, occupancy %,
-pending housekeeping tasks and open maintenance tickets for the hostel.
+pending housekeeping tasks for the hostel.
 
 ### Parent
 
 Read-only. **Dashboard** (`GET /parent/ward`) shows the linked ward's profile
-and room, fees, attendance, leave and out-pass history plus applicable notices.
+and room, attendance, leave history plus applicable notices.
 
 ## Cross-cutting workflows
 
 - **Complaints**: student raises (`POST /complaints`) → admin/warden view
   (`GET /complaints?status=all|new|inprocess|closed`) → action with a remark
   (`POST /complaints/:id/action`) → history tracked in `complaintHistory`.
-- **Leaves**: student requests (`POST /leaves`) → warden approves/rejects
-  (`POST /leaves/:id/decision`); approval also sets `parentApproved`.
-- **Out-passes**: student requests (`POST /outpasses`, quota `settings.outpassTotal`,
-  one open pass at a time) → warden approves (`POST /outpasses/:id/decision`) →
-  `active` on departure → `completed` on return. Departed/returned can be marked
-  from the out-pass page or by recording an exit/entry gate punch, which
-  auto-links via `linkedOutpassId` and stamps `actualReturn`.
+- **Leaves / Out-passes**: student requests (`POST /leaves`, quota
+  `settings.leaveTotal`, one open request at a time) → warden approves/rejects
+  (`POST /leaves/:id/decision`) → `active` on departure (`POST /leaves/:id/activate`,
+  stamps `departure`) → `completed` on return (`POST /leaves/:id/complete`,
+  stamps `actualReturn`). Departed/returned can be marked from the leave page or
+  by recording an exit/entry gate punch, which auto-links via `linkedLeaveId`.
 - **Entry / exit**: warden/admin/security records a punch (`POST /entry-exit`);
   an entry past the in-time (`settings.girlsInTime` / `summerInTime`) is `late`,
   >30 minutes late is `violation`.
-- **Visitors**: student registers a visitor → warden/security updates
-  (`PUT /visitors/:id`) → check-in/out times.
-- **Fees**: admin creates fee records; students pay (`POST /student/fees/:id/pay`);
-  report totals computed in `/admin/reports`.
 - **Attendance**: warden marks attendance per date/block; students view their
   own record; dashboard % is derived from it.
 - **Mess menu**: weekly menu editable by warden; shown to students.
@@ -218,8 +200,6 @@ filters):
   `medical_reserved`, `cleaning`, `blocked`, `reserved`.
 - Complaint: `New` (null), `In Process`, `Closed`.
 - Attendance: `present`, `absent`, `leave`.
-- Fee: `paid`, `due`, `overdue`.
-- Leave/visitor: `pending`, `approved`, `rejected` (visitors also `checked-in`).
-- Out-pass: `pending`, `approved`, `active`, `completed`, `rejected`.
+- Leave / Out-pass: `pending`, `approved`, `active`, `completed`, `rejected`.
 - Entry-exit: `normal`, `late`, `violation` (type `entry` / `exit`).
 - Notice audience: `all`, `students`, `girls`, `boys`, `wardens`.

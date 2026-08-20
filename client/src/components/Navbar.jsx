@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/auth'
 import { useTheme } from '../context/theme'
 import { useNotifications } from '../context/notifications'
+import { resourceApi } from '../api/client'
 import { navForRole, HOME_FOR_ROLE } from '../routes/navigation'
 import { buildBreadcrumb } from '../utils/breadcrumb'
 import { ROLE_COLOR } from '../utils/roles'
@@ -20,7 +21,7 @@ import { ROLE_COLOR } from '../utils/roles'
 export default function Navbar() {
   const { user, sidebarOpen, toggleSidebar, logout } = useAuth()
   const { mode, toggleTheme } = useTheme()
-  const { items, unreadCount, markAllRead } = useNotifications()
+  const { items, unreadCount, markAllRead, refresh } = useNotifications()
   const navigate = useNavigate()
   const location = useLocation()
   const { message } = AntApp.useApp()
@@ -52,6 +53,16 @@ export default function Navbar() {
     },
   }
 
+  const handleMarkAllRead = async () => {
+    markAllRead()
+    try {
+      await resourceApi.post('/notifications/read-all', {})
+    } catch {
+      // ignore failures; local state already reflects the action
+    }
+    refresh()
+  }
+
   const notificationContent = (
     <div style={{ width: 320 }}>
       <List
@@ -73,7 +84,7 @@ export default function Navbar() {
         )}
       />
       {items.length > 0 && (
-        <Button type="link" block onClick={markAllRead}>
+        <Button type="link" block onClick={handleMarkAllRead}>
           Mark all as read
         </Button>
       )}

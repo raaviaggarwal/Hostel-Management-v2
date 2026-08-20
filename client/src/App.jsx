@@ -25,22 +25,17 @@ const PORTALS = {
   mess: {
     roles: ['mess_manager'],
     title: 'Mess Manager',
-    subtitle: 'Mess menu, meal records and mess fee management.',
+    subtitle: 'Mess menu, meal records, feedback and inspections.',
   },
   security: {
     roles: ['security'],
     title: 'Security',
-    subtitle: 'Entry-exit, visitors and out-pass control.',
+    subtitle: 'Entry-exit and leave tracking at the gate.',
   },
   housekeeping: {
     roles: ['housekeeping'],
     title: 'Housekeeping',
     subtitle: 'Cleaning schedules and housekeeping duties.',
-  },
-  maintenance: {
-    roles: ['maintenance_staff'],
-    title: 'Maintenance Staff',
-    subtitle: 'Maintenance tickets and repair jobs.',
   },
   parent: {
     roles: ['parent'],

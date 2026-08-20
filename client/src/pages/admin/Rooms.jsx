@@ -8,7 +8,6 @@ import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import EntityModal from '../../components/EntityModal'
 import StatusTag from '../../components/StatusTag'
-import { formatCurrency } from '../../utils/format'
 
 const STATUS_OPTIONS = [
   { label: 'Available', value: 'available' },
@@ -108,7 +107,6 @@ export default function Rooms() {
       ],
     },
     { name: 'seater', label: 'Seater', input: 'number', rules: [{ required: true }], props: { min: 1 } },
-    { name: 'fees', label: 'Fees / Month', input: 'number', rules: [{ required: true }], props: { min: 0 } },
   ]
 
   const columns = [
@@ -127,7 +125,6 @@ export default function Rooms() {
     { title: 'Type', dataIndex: 'type', render: (v) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : '-') },
     { title: 'Seater', dataIndex: 'seater' },
     { title: 'Occupancy', dataIndex: 'occupied', render: (v, r) => `${v}/${r.seater}` },
-    { title: 'Fees / Month', dataIndex: 'fees', render: (v) => formatCurrency(v) },
     { title: 'Status', dataIndex: 'status', render: (v) => <StatusTag status={v} /> },
     {
       title: 'Actions',

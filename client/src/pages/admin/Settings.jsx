@@ -49,12 +49,6 @@ export default function Settings() {
         <Form.Item name="hostelName" label="Hostel Name" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item name="feeDeadline" label="Fee Deadline">
-          <Input />
-        </Form.Item>
-        <Form.Item name="maintenanceDay" label="Maintenance Day">
-          <Input />
-        </Form.Item>
         <Form.Item name="messDinnerTime" label="Mess Dinner Time">
           <Input />
         </Form.Item>

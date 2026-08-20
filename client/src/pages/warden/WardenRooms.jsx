@@ -7,7 +7,6 @@ import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import StatusTag from '../../components/StatusTag'
 import TableSearchBar from '../../components/TableSearchBar'
-import { formatCurrency } from '../../utils/format'
 
 export default function WardenRooms() {
   const { user } = useAuth()
@@ -34,7 +33,6 @@ export default function WardenRooms() {
     { title: 'Room No', dataIndex: 'roomNo' },
     { title: 'Block', render: (_, r) => blockName(r.blockId) },
     { title: 'Seater', dataIndex: 'seater' },
-    { title: 'Fees / Month', dataIndex: 'fees', render: (v) => formatCurrency(v) },
     { title: 'Occupancy', render: (_, r) => `${occupancy(r.roomNo)} / ${r.seater}` },
     { title: 'Status', dataIndex: 'status', render: (v) => <StatusTag status={v} /> },
   ]

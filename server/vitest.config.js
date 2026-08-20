@@ -7,5 +7,8 @@ export default defineConfig({
     include: ['tests/**/*.test.js'],
     testTimeout: 60000,
     hookTimeout: 60000,
+    env: {
+      BCRYPT_ROUNDS: '4',
+    },
   },
 })

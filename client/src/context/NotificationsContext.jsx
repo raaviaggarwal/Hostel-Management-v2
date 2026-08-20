@@ -1,6 +1,8 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import { resourceApi } from '../api/client'
 import { NotificationsContext } from './notifications'
+
+const POLL_INTERVAL = 30000
 
 export function NotificationsProvider({ children }) {
   const [items, setItems] = useState([])
@@ -38,6 +40,19 @@ export function NotificationsProvider({ children }) {
       // notifications are optional during the mock phase
     }
   }, [])
+
+  useEffect(() => {
+    refresh()
+    const interval = setInterval(refresh, POLL_INTERVAL)
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
+    document.addEventListener('visibilitychange', handleFocus)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleFocus)
+    }
+  }, [refresh])
 
   const value = useMemo(
     () => ({ items, unreadCount, setNotifications, refresh, addNotification, markAllRead, markRead }),

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { App as AntApp, Button, Card, Descriptions, Modal, Skeleton, Space, Tabs, Timeline, Typography } from 'antd'
-import { EyeOutlined, PaperClipOutlined, ToolOutlined } from '@ant-design/icons'
+import { EyeOutlined, ToolOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
@@ -8,7 +8,6 @@ import DataTable from '../../components/DataTable'
 import EntityModal from '../../components/EntityModal'
 import StatusTag from '../../components/StatusTag'
 import TableSearchBar from '../../components/TableSearchBar'
-import AttachmentLink from '../../components/AttachmentLink'
 import { useTableFilter } from '../../hooks/useTableFilter'
 import { formatDateTime } from '../../utils/format'
 
@@ -34,6 +33,7 @@ export default function Complaints() {
     'studentName',
     'complaintType',
     'complaintDetails',
+    'preferredVisitingHours',
   ])
 
   const openView = async (complaint) => {
@@ -73,10 +73,9 @@ export default function Complaints() {
     { title: 'Type', dataIndex: 'complaintType' },
     { title: 'Details', dataIndex: 'complaintDetails', ellipsis: true },
     {
-      title: 'Attach',
-      dataIndex: 'complaintDoc',
-      width: 60,
-      render: (doc) => (doc ? <PaperClipOutlined /> : null),
+      title: 'Preferred Visiting Hours',
+      dataIndex: 'preferredVisitingHours',
+      width: 120,
     },
     { title: 'Registered On', dataIndex: 'registrationDate', render: (v) => formatDateTime(v) },
     { title: 'Status', dataIndex: 'complaintStatus', render: (v) => <StatusTag status={v} /> },
@@ -118,8 +117,8 @@ export default function Complaints() {
                 {formatDateTime(viewing.registrationDate)}
               </Descriptions.Item>
               <Descriptions.Item label="Details">{viewing.complaintDetails}</Descriptions.Item>
-              <Descriptions.Item label="Attachment">
-                <AttachmentLink doc={viewing.complaintDoc} />
+              <Descriptions.Item label="Preferred Visiting Hours">
+                {viewing.preferredVisitingHours}
               </Descriptions.Item>
             </Descriptions>
 
