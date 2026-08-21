@@ -11,9 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-"dependencies": {
+  "dependencies": {
     "@ant-design/icons": "^6.3.2",
-    "antd": "^6.6.0",
+    "antd": "^6.6.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.28.0",
@@ -31,4 +31,3 @@
     "vitest": "^4.1.10"
   }
 }
-  
