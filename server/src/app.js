@@ -75,12 +75,11 @@ const hasClientBuild = fs.existsSync(path.join(distDir, 'index.html'))
 
 const allowedOrigins = [
   'http://localhost:5173',
-  'http://localhost:4173',
-  process.env.CORS_ORIGIN,
+  'https://hostel-management-v2.vercel.app',
+  ...(process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim())
+    : []),
 ]
-  .filter(Boolean)
-  .flatMap((origin) => origin.split(','))
-  .map((origin) => origin.trim())
   .filter(Boolean)
 
 const corsOptions = {
@@ -94,7 +93,6 @@ const corsOptions = {
       return callback(null, true)
     }
 
-    console.log('CORS blocked for origin:', origin)
     return callback(new Error(`CORS not allowed for origin: ${origin}`))
   },
 
