@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || '/api'
+let API_BASE = import.meta.env.VITE_API_URL || '/api'
 if (!API_BASE.endsWith('/api')) API_BASE += '/api'
 
 function readToken() {
