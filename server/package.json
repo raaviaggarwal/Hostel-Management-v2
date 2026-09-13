@@ -7,14 +7,14 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "build": "npx prisma generate && npx prisma migrate deploy && node --check src/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "prisma db seed",
     "seed": "node prisma/seed.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "node --check src/app.js && node --check src/auth.js && node --check src/index.js && node --check src/prisma.js && node --check src/routes/index.js && node --check prisma/seed.js && node --check tests/api.test.js && node --check vitest.config.js",
-    "build": "node --check src/index.js"
+    "lint": "node --check src/app.js && node --check src/auth.js && node --check src/index.js && node --check src/prisma.js && node --check src/routes/index.js && node --check prisma/seed.js && node --check tests/api.test.js && node --check vitest.config.js"
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
