@@ -168,6 +168,46 @@ describe('student allocation status', () => {
   })
 })
 
+describe('student creation', () => {
+  it('lets admins create and persist students, and reports duplicate registration numbers', async () => {
+    const regNo = 'TEST-ADMIN-STUDENT-2026'
+    const payload = { regNo, name: 'Admin Created Student', gender: 'male', year: 1, course: 'Engineering' }
+    const admin = await userByUsername('admin')
+
+    const created = await post('/api/students', payload, auth('admin', admin.id))
+    expect(created.status).toBe(201)
+
+    const persisted = await prisma.student.findUnique({ where: { regNo } })
+    expect(persisted).toMatchObject({ regNo, name: payload.name })
+    const listed = await get('/api/students')
+    expect(listed.some((student) => student.regNo === regNo)).toBe(true)
+
+    const duplicate = await post('/api/students', payload, auth('admin', admin.id))
+    expect(duplicate.status).toBe(409)
+    expect(duplicate.body.message).toMatch(/registration number already exists/i)
+  })
+
+  it('lets wardens create only within their hostel and rejects student accounts', async () => {
+    const warden = await userByUsername('warden')
+    const student = await userByUsername('student')
+    const regNo = 'TEST-WARDEN-STUDENT-2026'
+    const payload = { regNo, name: 'Warden Created Student', gender: 'male', year: 1, course: 'Engineering' }
+
+    const created = await post('/api/students', payload, auth('warden', warden.id))
+    expect(created.status).toBe(201)
+    expect(created.body.hostelId).toBe(warden.hostelId)
+
+    const persisted = await prisma.student.findUnique({ where: { regNo } })
+    expect(persisted).toMatchObject({ regNo, hostelId: warden.hostelId })
+
+    const rejected = await post('/api/students', {
+      ...payload,
+      regNo: 'TEST-STUDENT-FORBIDDEN-2026',
+    }, auth('student', student.id))
+    expect(rejected.status).toBe(403)
+  })
+})
+
 describe('warden scope', () => {
   it('only exposes allocations for the warden hostel', async () => {
     const warden = await userByUsername('warden')

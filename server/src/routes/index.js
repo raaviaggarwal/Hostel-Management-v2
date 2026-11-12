@@ -269,9 +269,10 @@ const pageFrom = (req) => {
 // ---- Auth ----
 router.post('/auth/login', async (req, res) => {
   const body = req.body || {}
-  const { usernameOrEmail, password } = body
+  const { usernameOrEmail, username, password } = body
+  const identifier = username || usernameOrEmail
   const user = await prisma.user.findFirst({
-    where: { OR: [{ username: usernameOrEmail }, { email: usernameOrEmail }] },
+    where: { OR: [{ username: identifier }, { email: identifier }] },
   })
   if (!user || !bcrypt.compareSync(password || '', user.password)) {
     return fail(res, 'Invalid username/email or password', 401)
@@ -744,28 +745,52 @@ const STUDENT_FIELDS = [
 ]
 
 router.post('/students', async (req, res) => {
-  if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  const isAdmin = user.role === 'admin'
+  if (!isAdmin && !WARDEN_ROLES.includes(user.role)) {
+    return fail(res, 'Forbidden', 403)
+  }
+  if (!isAdmin && !user.hostelId) {
+    return fail(res, 'Warden must be assigned to a hostel', 403)
+  }
+
   const body = req.body || {}
-  const student = await prisma.student.create({
-    data: {
-      regNo: body.regNo,
-      name: body.name,
-      gender: body.gender,
-      year: num(body.year || 1),
-      course: body.course,
-      cgpa: num(body.cgpa || 0),
-      contactno: body.contactno || '',
-      emailid: body.emailid || '',
-      guardianName: body.guardianName || '',
-      guardianRelation: body.guardianRelation || '',
-      guardianContactno: body.guardianContactno || '',
-      active: false,
-    },
-  })
+  if (!body.regNo || !body.name) {
+    return fail(res, 'Registration number and name are required', 400)
+  }
+
+  let student
+  try {
+    student = await prisma.student.create({
+      data: {
+        regNo: body.regNo,
+        name: body.name,
+        gender: body.gender,
+        year: num(body.year || 1),
+        course: body.course,
+        cgpa: num(body.cgpa || 0),
+        contactno: body.contactno || '',
+        emailid: body.emailid || '',
+        ...(isAdmin ? {} : { hostelId: user.hostelId }),
+        guardianName: body.guardianName || '',
+        guardianRelation: body.guardianRelation || '',
+        guardianContactno: body.guardianContactno || '',
+        active: false,
+      },
+    })
+  } catch (error) {
+    if (error?.code === 'P2002') {
+      return fail(res, 'A student with this registration number already exists', 409)
+    }
+    throw error
+  }
+
   return ok(res, student, 201)
 })
 
 router.put('/students/:id', async (req, res) => {
+  if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
   if (!student) return fail(res, 'Student not found', 404)
   const body = req.body || {}
@@ -783,16 +808,38 @@ router.delete('/students/:id', async (req, res) => {
 })
 
 router.put('/students/:id/room', async (req, res) => {
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  const isAdmin = user.role === 'admin'
+  if (!isAdmin && !WARDEN_ROLES.includes(user.role)) {
+    return fail(res, 'Forbidden', 403)
+  }
+  if (!isAdmin && !user.hostelId) {
+    return fail(res, 'Warden must be assigned to a hostel', 403)
+  }
+
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
   if (!student) return fail(res, 'Student not found', 404)
+  if (!isAdmin && student.hostelId !== user.hostelId) {
+    return fail(res, 'Student is outside your authorized hostel', 403)
+  }
+
   const body = req.body || {}
   let room = null
   if (body.roomId) room = await prisma.room.findUnique({ where: { id: num(body.roomId) } })
   if (!room && body.roomno) {
     room = await prisma.room.findFirst({
-      where: { roomNo: body.roomno, hostelId: num(body.hostelId || student.hostelId) },
+      where: {
+        roomNo: body.roomno,
+        hostelId: isAdmin ? num(body.hostelId || student.hostelId) : user.hostelId,
+      },
     })
   }
+  if (!isAdmin && room && room.hostelId !== user.hostelId) {
+    return fail(res, 'Room is outside your authorized hostel', 403)
+  }
+  if (!isAdmin && !room) return fail(res, 'Room not found', 404)
+
   if (room) {
     const occ = await roomOccupancyMap()
     const previous = student.roomId

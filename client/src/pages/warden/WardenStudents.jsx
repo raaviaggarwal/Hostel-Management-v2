@@ -46,12 +46,14 @@ export default function WardenStudents() {
     guardianRelation: '',
   })
 
-  const roomOptions = rooms.map((room) => ({
-    label: `${room.roomNo} — ${
-      blocks.find((b) => b.id === room.blockId)?.name || '-'
-    } (${room.seater}-seater, ${room.status})`,
-    value: room.id,
-  }))
+  const roomOptions = rooms
+    .filter((room) => String(room.hostelId) === String(user?.hostelId))
+    .map((room) => ({
+      label: `${room.roomNo} — ${
+        blocks.find((b) => b.id === room.blockId)?.name || '-'
+      } (${room.seater}-seater, ${room.status})`,
+      value: room.id,
+    }))
 
   const blockName = (id) =>
     blocks.find((b) => b.id === id)?.name || '-'
