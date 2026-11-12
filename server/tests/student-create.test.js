@@ -4,9 +4,14 @@ import { signToken } from '../src/auth.js'
 
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
-    user: { findUnique: vi.fn() },
-    student: { create: vi.fn(), findUnique: vi.fn() },
-    room: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), findFirst: vi.fn() },
+    student: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+    notification: { findMany: vi.fn(), updateMany: vi.fn() },
+    allocation: { findFirst: vi.fn(), findMany: vi.fn() },
+    hostel: { findMany: vi.fn() },
+    room: { findUnique: vi.fn(), findMany: vi.fn() },
+    complaint: { findMany: vi.fn() },
+    leave: { findMany: vi.fn() },
   },
 }))
 
@@ -29,6 +34,14 @@ beforeEach(() => {
     return [admin, warden, hostelLessWarden, student].find((user) => user.id === where.id) || null
   })
   prismaMock.student.create.mockImplementation(async ({ data }) => ({ id: 500, ...data }))
+  prismaMock.student.findMany.mockResolvedValue([])
+  prismaMock.notification.findMany.mockResolvedValue([])
+  prismaMock.allocation.findFirst.mockResolvedValue(null)
+  prismaMock.allocation.findMany.mockResolvedValue([])
+  prismaMock.hostel.findMany.mockResolvedValue([])
+  prismaMock.room.findMany.mockResolvedValue([])
+  prismaMock.complaint.findMany.mockResolvedValue([])
+  prismaMock.leave.findMany.mockResolvedValue([])
 })
 
 describe('POST /api/students', () => {
@@ -102,5 +115,80 @@ describe('POST /api/students', () => {
     expect(unauthorized.status).toBe(401)
     expect(duplicate.status).toBe(409)
     expect(duplicate.body.message).toMatch(/registration number already exists/i)
+  })
+
+  it('requires authentication for student and notification lists', async () => {
+    const students = await request(app).get('/api/students')
+    const studentById = await request(app).get('/api/students/20')
+    const notifications = await request(app).get('/api/notifications')
+    const markRead = await request(app).post('/api/notifications/read-all').send({})
+
+    expect(students.status).toBe(401)
+    expect(studentById.status).toBe(401)
+    expect(notifications.status).toBe(401)
+    expect(markRead.status).toBe(401)
+    expect(prismaMock.student.findMany).not.toHaveBeenCalled()
+    expect(prismaMock.notification.findMany).not.toHaveBeenCalled()
+    expect(prismaMock.notification.updateMany).not.toHaveBeenCalled()
+  })
+
+  it('limits student detail reads to the requesters authorized scope', async () => {
+    prismaMock.student.findUnique.mockResolvedValueOnce({ id: 20, regNo: 'OTHER', hostelId: 5 })
+    const outsideWardenStudent = await request(app)
+      .get('/api/students/20')
+      .set(auth(warden))
+
+    prismaMock.student.findUnique.mockResolvedValueOnce({ id: 21, regNo: student.regNo, hostelId: 2 })
+    const ownStudent = await request(app)
+      .get('/api/students/21')
+      .set(auth(student))
+
+    prismaMock.student.findUnique.mockResolvedValueOnce({ id: 22, regNo: 'OTHER', hostelId: 2 })
+    const otherStudent = await request(app)
+      .get('/api/students/22')
+      .set(auth(student))
+
+    expect(outsideWardenStudent.status).toBe(403)
+    expect(ownStudent.status).toBe(200)
+    expect(otherStudent.status).toBe(403)
+  })
+
+  it('scopes student and warden list queries to their own records', async () => {
+    await request(app).get('/api/students').set(auth(student))
+    expect(prismaMock.student.findMany).toHaveBeenLastCalledWith({
+      where: { regNo: student.regNo },
+      orderBy: { id: 'asc' },
+    })
+
+    await request(app).get('/api/students').set(auth(warden))
+    expect(prismaMock.student.findMany).toHaveBeenLastCalledWith({
+      where: { hostelId: warden.hostelId },
+      orderBy: { id: 'asc' },
+    })
+  })
+
+  it('requires an admin token for the admin dashboard', async () => {
+    const dashboard = await request(app).get('/api/admin/dashboard').set(auth(admin))
+    const anonymous = await request(app).get('/api/admin/dashboard')
+    const studentDashboard = await request(app).get('/api/admin/dashboard').set(auth(student))
+
+    expect(dashboard.status).toBe(200)
+    expect(anonymous.status).toBe(401)
+    expect(studentDashboard.status).toBe(403)
+  })
+
+  it('returns server errors instead of treating database outages as invalid tokens', async () => {
+    const databaseError = new Error('database connection unavailable')
+    prismaMock.user.findUnique.mockRejectedValueOnce(databaseError)
+    const logError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const response = await request(app).get('/api/auth/me').set(auth(admin))
+      expect(response.status).toBe(500)
+      expect(response.body.message).toBe('Internal server error')
+      expect(logError).toHaveBeenCalledWith('Server error:', databaseError.message)
+    } finally {
+      logError.mockRestore()
+    }
   })
 })

@@ -383,11 +383,13 @@ const SEQUENCE_MODELS = [
 ]
 
 export async function resetSequences(prisma) {
-  for (const model of SEQUENCE_MODELS) {
-    await prisma.$executeRawUnsafe(
-      `SELECT setval(pg_get_serial_sequence('"${model}"', 'id'), COALESCE((SELECT MAX(id) FROM "${model}"), 1))`
+  await prisma.$transaction(
+    SEQUENCE_MODELS.map((model) =>
+      prisma.$executeRawUnsafe(
+        `SELECT setval(pg_get_serial_sequence('"${model}"', 'id'), COALESCE((SELECT MAX(id) FROM "${model}"), 1))`
+      )
     )
-  }
+  )
 }
 
 export async function seedDatabase(prisma) {
@@ -422,36 +424,45 @@ export async function seedDatabase(prisma) {
     prisma.setting.deleteMany(),
   ])
 
-  await prisma.hostel.createMany({ data: hostels })
-  await prisma.block.createMany({ data: blocks })
-  await prisma.room.createMany({
-    data: rooms.map(({ occupants: _occupants, ...room }) => room),
-  })
-  await prisma.user.createMany({
-    data: allUsers.map(({ password, ...u }) => ({ ...u, password: hash(password) })),
-  })
-  await prisma.student.createMany({ data: students })
-  await prisma.allocation.createMany({ data: allocations })
-  await prisma.complaint.createMany({ data: complaints })
-  await prisma.complaintAction.createMany({ data: complaintHistory })
-  await prisma.inventoryItem.createMany({ data: inventory })
-  await prisma.housekeepingTask.createMany({ data: housekeeping })
-  await prisma.messMenu.createMany({ data: messMenu })
-  await prisma.messFeedback.createMany({ data: messFeedback })
-  await prisma.messComplaint.createMany({ data: messComplaints })
-  await prisma.messInspection.createMany({ data: messInspections })
-  await prisma.attendance.createMany({ data: attendance })
-  await prisma.entryExit.createMany({ data: entryExit })
-  await prisma.leave.createMany({ data: leaves })
-  await prisma.wifiAccessPoint.createMany({ data: wifi })
-  await prisma.medicalDispensary.create({ data: { doctor: 'Dr. Kavita Nair', nurse: 'Nurse Renu', contactno: '01792-227700', ambulance: '01792-227701' } })
-  await prisma.medicalIncident.createMany({ data: medicalIncidents })
-  await prisma.committeeMember.createMany({ data: committeeMembers })
-  await prisma.committeeMeeting.createMany({ data: committeeMeetings })
-  await prisma.auditLog.createMany({ data: auditLogs })
-  await prisma.notice.createMany({ data: notices })
-  await prisma.notification.createMany({ data: notifications })
-  await prisma.setting.create({ data: settings })
+  await prisma.$transaction([
+    prisma.hostel.createMany({ data: hostels }),
+    prisma.block.createMany({ data: blocks }),
+    prisma.room.createMany({
+      data: rooms.map(({ occupants: _occupants, ...room }) => room),
+    }),
+    prisma.user.createMany({
+      data: allUsers.map(({ password, ...u }) => ({ ...u, password: hash(password) })),
+    }),
+    prisma.student.createMany({ data: students }),
+    prisma.allocation.createMany({ data: allocations }),
+    prisma.complaint.createMany({ data: complaints }),
+    prisma.complaintAction.createMany({ data: complaintHistory }),
+    prisma.inventoryItem.createMany({ data: inventory }),
+    prisma.housekeepingTask.createMany({ data: housekeeping }),
+    prisma.messMenu.createMany({ data: messMenu }),
+    prisma.messFeedback.createMany({ data: messFeedback }),
+    prisma.messComplaint.createMany({ data: messComplaints }),
+    prisma.messInspection.createMany({ data: messInspections }),
+    prisma.attendance.createMany({ data: attendance }),
+    prisma.entryExit.createMany({ data: entryExit }),
+    prisma.leave.createMany({ data: leaves }),
+    prisma.wifiAccessPoint.createMany({ data: wifi }),
+    prisma.medicalDispensary.create({
+      data: {
+        doctor: 'Dr. Kavita Nair',
+        nurse: 'Nurse Renu',
+        contactno: '01792-227700',
+        ambulance: '01792-227701',
+      },
+    }),
+    prisma.medicalIncident.createMany({ data: medicalIncidents }),
+    prisma.committeeMember.createMany({ data: committeeMembers }),
+    prisma.committeeMeeting.createMany({ data: committeeMeetings }),
+    prisma.auditLog.createMany({ data: auditLogs }),
+    prisma.notice.createMany({ data: notices }),
+    prisma.notification.createMany({ data: notifications }),
+    prisma.setting.create({ data: settings }),
+  ])
 
   await resetSequences(prisma)
 }

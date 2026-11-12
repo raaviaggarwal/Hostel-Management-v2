@@ -9,6 +9,7 @@ export default defineConfig({
     hookTimeout: 60000,
     env: {
       BCRYPT_ROUNDS: '4',
+      NODE_ENV: 'test',
     },
   },
 })

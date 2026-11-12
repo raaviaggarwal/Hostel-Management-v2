@@ -49,13 +49,13 @@ The PostgreSQL database connection was failing because the original Render Postg
 ### `server/.env`
 **Before**:
 ```
-DATABASE_URL="postgresql://hostel_management_db_3sum_user:6RbQAZirRu1ZtUeLC0030gd1x6xbyksL@dpg-dajdfgp594qs73bpb9ag-a.ohio-postgres.render.com/hostel_management_db_3sum"
+DATABASE_URL="[REDACTED_DATABASE_URL]"
 ```
 
 **After**:
 ```
-DATABASE_URL="postgresql://hostel_management_db_chj3_user:Lf2CgA5bK1P204axqzOtXzNRcyfsdJBR@dpg-dbquinek1f9s73fdb6rg-a.ohio-postgres.render.com/hostel_management_db_chj3"
-JWT_SECRET="a9Kx7mP2qL8vR4zT1nW6cY3hF9jD5sG0uB7eQ2wX8"
+DATABASE_URL="[REDACTED_DATABASE_URL]"
+JWT_SECRET="[REDACTED]"
 PORT=5000
 NODE_ENV=production
 CORS_ORIGIN="https://hostel-management-v2.vercel.app"
@@ -129,7 +129,7 @@ The `prisma/seed.js` script was executed successfully against the new database. 
 - This is safe for **new/destroyed databases** but would delete existing production data
 - The script is NOT idempotent for production databases - it clears all data first
 - Passwords are hashed using bcrypt (BCRYPT_ROUNDS from env)
-- Demo account credentials preserved: admin/admin123, warden/warden123, student/student123
+- Demo account credentials are defined in seed data; rotate defaults before public deployment.
 - All 38 Prisma models are represented in the seed data
 
 ---
@@ -161,8 +161,8 @@ The `prisma/seed.js` script was executed successfully against the new database. 
 | **Root Directory** | `.` (service root) | Correct for this service |
 | **Region** | Ohio (us-east-2) | Matches database region |
 | **Environment Variables** | | |
-| - `DATABASE_URL` | `postgresql://hostel_management_db_chj3_user:Lf2CgA5bK1P204axqzOtXzNRcyfsdJBR@dpg-dbquinek1f9s73fdb6rg-a.ohio-postgres.render.com/hostel_management_db_chj3` | **UPDATED** - new database |
-| - `JWT_SECRET` | `a9Kx7mP2qL8vR4zT1nW6cY3hF9jD5sG0uB7eQ2wX8` | Preserved from original |
+| - `DATABASE_URL` | `[REDACTED_DATABASE_URL]` | **UPDATED** - new database |
+| - `JWT_SECRET` | `[REDACTED]` | Preserved from original |
 | - `NODE_ENV` | `production` | Correct for production |
 | - `PORT` | `5000` | Default port |
 | - `CORS_ORIGIN` | `https://hostel-management-v2.vercel.app` | Frontend URL |

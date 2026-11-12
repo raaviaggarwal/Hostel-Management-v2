@@ -44,17 +44,20 @@ const timeToMinutes = (t) => {
 // ---- Auth helpers ----
 async function getUser(req) {
   if (req.user) return req.user
-  const match = (req.headers.authorization || '').match(/^Bearer (.+)$/)
+  const match = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/i)
   if (!match) return null
+
+  let payload
   try {
-    const payload = verifyToken(match[1])
-    const user = await prisma.user.findUnique({ where: { id: payload.sub } })
-    if (!user || user.role !== payload.role || user.tokenVersion !== payload.ver) return null
-    req.user = user
-    return user
+    payload = verifyToken(match[1])
   } catch {
     return null
   }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.sub } })
+  if (!user || user.role !== payload.role || user.tokenVersion !== payload.ver) return null
+  req.user = user
+  return user
 }
 
 async function adminUser(req) {
@@ -270,7 +273,12 @@ const pageFrom = (req) => {
 router.post('/auth/login', async (req, res) => {
   const body = req.body || {}
   const { usernameOrEmail, username, password } = body
-  const identifier = username || usernameOrEmail
+  const rawIdentifier = username || usernameOrEmail
+  if (typeof rawIdentifier !== 'string' || !rawIdentifier.trim() ||
+      typeof password !== 'string' || !password) {
+    return fail(res, 'Username/email and password are required', 400)
+  }
+  const identifier = rawIdentifier.trim()
   const user = await prisma.user.findFirst({
     where: { OR: [{ username: identifier }, { email: identifier }] },
   })
@@ -318,13 +326,15 @@ function notificationWhereFor(user) {
 
 router.get('/notifications', async (req, res) => {
   const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
   return ok(res, paginateList(req, await prisma.notification.findMany({ where: notificationWhereFor(user) })))
 })
 
 router.post('/notifications/read-all', async (req, res) => {
   const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
   await prisma.notification.updateMany({
-    where: notificationWhereFor(user) || {},
+    where: notificationWhereFor(user) ?? {},
     data: { read: true },
   })
   return ok(res, { ok: true })
@@ -332,6 +342,7 @@ router.post('/notifications/read-all', async (req, res) => {
 
 router.post('/notifications/:id/read', async (req, res) => {
   const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
   const where = { id: num(req.params.id) }
   const scoped = notificationWhereFor(user)
   if (scoped) where.OR = scoped.OR
@@ -340,7 +351,10 @@ router.post('/notifications/:id/read', async (req, res) => {
 })
 
 // ---- Admin dashboard ----
-router.get('/admin/dashboard', async (_req, res) => {
+router.get('/admin/dashboard', async (req, res) => {
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  if (user.role !== 'admin') return fail(res, 'Forbidden', 403)
   const [hostels, rooms, housed, allocations, complaints, leaves] = await Promise.all([
     prisma.hostel.findMany({ orderBy: { id: 'asc' } }),
     prisma.room.findMany(),
@@ -711,18 +725,34 @@ router.put('/rooms/:id/status', async (req, res) => {
 })
 
 // ---- Students ----
+const STUDENT_READ_ROLES = ['admin', 'student', 'mess_manager', 'security', ...WARDEN_ROLES]
+
 router.get('/students', async (req, res) => {
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  if (!STUDENT_READ_ROLES.includes(user.role)) return fail(res, 'Forbidden', 403)
+
   const search = String(req.query.search || '').toLowerCase()
+  const filters = []
+  if (search) {
+    filters.push({
+      OR: [
+        { name: { contains: search, mode: 'insensitive' } },
+        { regNo: { contains: search } },
+        { emailid: { contains: search, mode: 'insensitive' } },
+      ],
+    })
+  }
+  if (WARDEN_ROLES.includes(user.role) && user.hostelId) {
+    filters.push({ hostelId: user.hostelId })
+  }
+  if (user.role === 'student') {
+    if (!user.regNo) return fail(res, 'Student account is not linked to a registration number', 403)
+    filters.push({ regNo: user.regNo })
+  }
+
   const students = await prisma.student.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { regNo: { contains: search } },
-            { emailid: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: filters.length > 1 ? { AND: filters } : filters[0],
     orderBy: { id: 'asc' },
   })
   const list = []
@@ -734,8 +764,19 @@ router.get('/students', async (req, res) => {
 })
 
 router.get('/students/:id', async (req, res) => {
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  if (!STUDENT_READ_ROLES.includes(user.role)) return fail(res, 'Forbidden', 403)
+
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
-  return student ? ok(res, student) : fail(res, 'Student not found', 404)
+  if (!student) return fail(res, 'Student not found', 404)
+  if (WARDEN_ROLES.includes(user.role) && user.hostelId && student.hostelId !== user.hostelId) {
+    return fail(res, 'Student is outside your authorized hostel', 403)
+  }
+  if (user.role === 'student' && student.regNo !== user.regNo) {
+    return fail(res, 'Forbidden', 403)
+  }
+  return ok(res, student)
 })
 
 const STUDENT_FIELDS = [
@@ -790,7 +831,9 @@ router.post('/students', async (req, res) => {
 })
 
 router.put('/students/:id', async (req, res) => {
-  if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  if (user.role !== 'admin') return fail(res, 'Forbidden', 403)
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
   if (!student) return fail(res, 'Student not found', 404)
   const body = req.body || {}
@@ -802,7 +845,9 @@ router.put('/students/:id', async (req, res) => {
 })
 
 router.delete('/students/:id', async (req, res) => {
-  if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
+  const user = await getUser(req)
+  if (!user) return fail(res, 'Unauthorized', 401)
+  if (user.role !== 'admin') return fail(res, 'Forbidden', 403)
   await prisma.student.deleteMany({ where: { id: num(req.params.id) } })
   return ok(res, { ok: true })
 })

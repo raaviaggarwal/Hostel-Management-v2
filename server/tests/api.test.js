@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, afterAll, beforeEach } from 'vitest'
 import request from 'supertest'
 import jwt from 'jsonwebtoken'
 import fs from 'node:fs'
@@ -46,10 +46,6 @@ const byName = async (name) => prisma.student.findFirst({ where: { name } })
 const allocByName = async (name) => prisma.allocation.findFirst({ where: { studentName: name } })
 const userByUsername = async (username) => prisma.user.findFirst({ where: { username } })
 
-beforeAll(async () => {
-  await seedDatabase(prisma)
-})
-
 beforeEach(async () => {
   await seedDatabase(prisma)
 })
@@ -93,7 +89,8 @@ describe('auth', () => {
 
 describe('admin dashboard', () => {
   it('returns occupancy grouped by gender across 7 hostels', async () => {
-    const data = await get('/api/admin/dashboard')
+    const admin = await userByUsername('admin')
+    const data = await get('/api/admin/dashboard', auth('admin', admin.id))
     expect(data.stats.totalHostels).toBe(7)
     expect(data.stats.campusHostels).toBe(5)
     expect(data.stats.offCampusHostels).toBe(2)
@@ -114,7 +111,8 @@ describe('admin dashboard', () => {
   })
 
   it('tracks allocation pipeline on the dashboard', async () => {
-    const data = await get('/api/admin/dashboard')
+    const admin = await userByUsername('admin')
+    const data = await get('/api/admin/dashboard', auth('admin', admin.id))
     expect(data.stats.pendingAllocations).toBe(3)
     expect(data.stats.waitlisted).toBe(1)
   })
@@ -160,7 +158,8 @@ describe('student allocation status', () => {
   })
 
   it('surfaces allocation status on the student list', async () => {
-    const students = await get('/api/students')
+    const admin = await userByUsername('admin')
+    const students = await get('/api/students', auth('admin', admin.id))
     const raavi = students.find((s) => s.name === 'Raavi Aggarwal')
     expect(raavi.allocationStatus).toBe('occupied')
     const manisha = students.find((s) => s.name === 'Manisha Rao')
@@ -179,7 +178,7 @@ describe('student creation', () => {
 
     const persisted = await prisma.student.findUnique({ where: { regNo } })
     expect(persisted).toMatchObject({ regNo, name: payload.name })
-    const listed = await get('/api/students')
+    const listed = await get('/api/students', auth('admin', admin.id))
     expect(listed.some((student) => student.regNo === regNo)).toBe(true)
 
     const duplicate = await post('/api/students', payload, auth('admin', admin.id))
@@ -199,6 +198,8 @@ describe('student creation', () => {
 
     const persisted = await prisma.student.findUnique({ where: { regNo } })
     expect(persisted).toMatchObject({ regNo, hostelId: warden.hostelId })
+    const wardenList = await get('/api/students', auth('warden', warden.id))
+    expect(wardenList.every((record) => record.hostelId === warden.hostelId)).toBe(true)
 
     const rejected = await post('/api/students', {
       ...payload,
@@ -516,17 +517,20 @@ describe('entry / exit (biometric)', () => {
 
 describe('notifications', () => {
   it('lists notifications and marks one as read', async () => {
-    const list = await get('/api/notifications')
+    const admin = await userByUsername('admin')
+    const headers = auth('admin', admin.id)
+    const list = await get('/api/notifications', headers)
     expect(list.length).toBeGreaterThan(0)
     const unread = list.find((n) => !n.read)
     expect(unread).toBeTruthy()
-    await post(`/api/notifications/${unread.id}/read`, {})
+    await post(`/api/notifications/${unread.id}/read`, {}, headers)
     const updated = await prisma.notification.findUnique({ where: { id: unread.id } })
     expect(updated.read).toBe(true)
   })
 
   it('marks all notifications as read', async () => {
-    await post('/api/notifications/read-all', {})
+    const admin = await userByUsername('admin')
+    await post('/api/notifications/read-all', {}, auth('admin', admin.id))
     const all = await prisma.notification.findMany()
     expect(all.every((n) => n.read)).toBe(true)
   })
@@ -539,6 +543,14 @@ describe('notifications', () => {
 
     const wardenList = await get('/api/notifications', auth('warden', 2))
     expect(wardenList.some((n) => n.id === 2)).toBe(true)
+  })
+
+  it('rejects unauthenticated notification reads and updates', async () => {
+    const list = await request(app).get('/api/notifications')
+    const update = await request(app).post('/api/notifications/read-all').send({})
+
+    expect(list.status).toBe(401)
+    expect(update.status).toBe(401)
   })
 })
 
