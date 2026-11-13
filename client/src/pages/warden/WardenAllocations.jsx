@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
   App as AntApp,
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -41,7 +42,10 @@ export default function WardenAllocations() {
   const { message } = AntApp.useApp()
   const { user } = useAuth()
   const [tab, setTab] = useState('all')
-  const { data, loading, reload } = useResource('/allocations')
+  const { data, loading, reload, error } = useResource('/allocations', {
+    refreshIntervalMs: 30000,
+    refreshOnFocus: true,
+  })
   const { data: rooms } = useResource('/rooms')
   const { data: blocks } = useResource('/blocks')
   const { data: hostels } = useResource('/hostels')
@@ -240,6 +244,16 @@ export default function WardenAllocations() {
         title="Allocations"
         subtitle="Review and allocate rooms for hostel applications."
       />
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Unable to refresh allocation requests"
+          description={error.message || 'The latest applications could not be loaded.'}
+          action={<Button size="small" onClick={reload}>Retry</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />

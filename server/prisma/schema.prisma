@@ -191,18 +191,21 @@ model Notice {
 }
 
 model Leave {
-  id              Int     @id @default(autoincrement())
-  studentId       Int
-  studentName     String
-  from            String
-  to              String
-  reason          String
-  destination     String
-  parentApproved  Boolean
-  status          String
-  departure       String?
-  actualReturn    String?
-  student         Student @relation(fields: [studentId], references: [id])
+  id                    Int     @id @default(autoincrement())
+  studentId             Int
+  studentName           String
+  requestType           String  @default("LEAVE")
+  from                  String
+  to                    String
+  reason                String
+  destination           String
+  parentApproved        Boolean
+  status                String
+  requestedDepartureAt  String?
+  expectedReturnAt      String?
+  departure             String?
+  actualReturn          String?
+  student               Student @relation(fields: [studentId], references: [id])
 }
 
 model MessMenu {

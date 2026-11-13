@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Alert, Card, Col, Empty, Row, Skeleton, Statistic, Tag, Typography } from 'antd'
+import dayjs from 'dayjs'
 import {
   BugOutlined,
   CalendarOutlined,
@@ -11,6 +12,8 @@ import { useAuth } from '../../context/auth'
 import PageHeader from '../../components/PageHeader'
 import StatusTag from '../../components/StatusTag'
 
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000
+
 export default function StudentDashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -20,28 +23,47 @@ export default function StudentDashboard() {
 
   useEffect(() => {
     let active = true
-    resourceApi
-      .get('/student/dashboard')
-      .then((result) => {
-        if (active) setData(result)
-      })
-      .catch((requestError) => {
-        if (!active) return
-        if (requestError.status === 404) setData(null)
-        else setError(requestError)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    let latestRequest = 0
+    const load = async () => {
+      const requestId = ++latestRequest
+      try {
+        const result = await resourceApi.get('/student/dashboard')
+        if (active && requestId === latestRequest) {
+          setData(result)
+          setError(null)
+        }
+      } catch (requestError) {
+        if (!active || requestId !== latestRequest) return
+        if (requestError.status === 404) {
+          setData(null)
+          setError(null)
+        } else {
+          setError(requestError)
+        }
+      } finally {
+        if (active && requestId === latestRequest) setLoading(false)
+      }
+    }
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+
+    void load()
+    const intervalId = window.setInterval(refreshIfVisible, DASHBOARD_REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', refreshIfVisible)
+    document.addEventListener('visibilitychange', refreshIfVisible)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshIfVisible)
+      document.removeEventListener('visibilitychange', refreshIfVisible)
     }
   }, [])
 
-  if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (loading && !data) return <Skeleton active paragraph={{ rows: 12 }} />
 
-  if (error) {
+  if (error && !data) {
     return (
       <Alert
         type="error"
@@ -69,6 +91,15 @@ export default function StudentDashboard() {
         title={`Welcome, ${user?.name?.split(' ')[0] || 'Student'}`}
         subtitle="Your hostel dashboard — complaints, leave, attendance and more."
       />
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Dashboard refresh failed"
+          description={error.message || 'The latest dashboard data could not be loaded.'}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} md={6}>
@@ -164,6 +195,47 @@ export default function StudentDashboard() {
           </Card>
         </Col>
       </Row>
+
+      <Card
+        size="small"
+        title="Recent Leave and Out-Pass Requests"
+        style={{ marginTop: 16 }}
+        extra={
+          <Typography.Link onClick={() => navigate('/student/leave')}>
+            View all
+          </Typography.Link>
+        }
+      >
+        {data.recentRequests.length === 0 ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No requests yet" />
+        ) : (
+          data.recentRequests.map((request) => (
+            <div
+              key={request.id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: 12,
+                padding: '6px 0',
+              }}
+            >
+              <div>
+                <Typography.Text strong>
+                  {request.requestType === 'OUTPASS' ? 'Out-Pass' : 'Leave'}
+                </Typography.Text>
+                <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                  {request.reason}
+                  {request.requestedDepartureAt
+                    ? ` · ${dayjs(request.requestedDepartureAt).format('YYYY-MM-DD HH:mm')}`
+                    : ` · ${request.from} to ${request.to}`}
+                </Typography.Paragraph>
+              </div>
+              <StatusTag status={request.status} />
+            </div>
+          ))
+        )}
+      </Card>
 
       <Card
         size="small"

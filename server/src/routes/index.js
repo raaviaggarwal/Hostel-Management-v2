@@ -103,6 +103,89 @@ async function studentScope(req) {
   return prisma.student.findUnique({ where: { regNo: user.regNo } })
 }
 
+async function requestUser(req, res, roles) {
+  const user = await getUser(req)
+  if (!user) {
+    fail(res, 'Unauthorized', 401)
+    return null
+  }
+  if (!roles.includes(user.role)) {
+    fail(res, 'Forbidden', 403)
+    return null
+  }
+  if (WARDEN_ROLES.includes(user.role) && !user.hostelId && user.role !== 'chief_warden') {
+    fail(res, 'Forbidden', 403)
+    return null
+  }
+  return user
+}
+
+async function requestStudent(req, res) {
+  const user = await requestUser(req, res, ['student'])
+  if (!user) return null
+  if (!user.regNo) {
+    fail(res, 'Student record not found', 404)
+    return null
+  }
+  const student = await prisma.student.findUnique({ where: { regNo: user.regNo } })
+  if (!student) {
+    fail(res, 'Student record not found', 404)
+    return null
+  }
+  return student
+}
+
+async function requestStudentIds(user) {
+  if (user.role === 'admin' || (user.role === 'chief_warden' && !user.hostelId)) return null
+  if (!user.hostelId) return []
+  const students = await prisma.student.findMany({
+    where: { hostelId: user.hostelId },
+    select: { id: true },
+  })
+  return students.map((student) => student.id)
+}
+
+async function canAccessRequestStudent(user, studentId) {
+  if (user.role === 'admin') return true
+  if (WARDEN_ROLES.includes(user.role)) {
+    if (user.role === 'chief_warden' && !user.hostelId) return true
+    if (!user.hostelId) return false
+    const student = await prisma.student.findUnique({
+      where: { id: num(studentId) },
+      select: { hostelId: true },
+    })
+    return student?.hostelId === user.hostelId
+  }
+  if (user.role === 'student' && user.regNo) {
+    const student = await prisma.student.findUnique({
+      where: { regNo: user.regNo },
+      select: { id: true },
+    })
+    return student?.id === num(studentId)
+  }
+  return false
+}
+
+async function canAccessAllocation(user, allocation) {
+  if (user.role === 'admin') return true
+  if (WARDEN_ROLES.includes(user.role)) {
+    if (user.role === 'chief_warden' && !user.hostelId) return true
+    if (!user.hostelId) return false
+    return allocation.hostelId === user.hostelId
+      || (allocation.hostelId === null
+        && Array.isArray(allocation.hostelPrefs)
+        && allocation.hostelPrefs.some((hostelId) => num(hostelId) === user.hostelId))
+  }
+  if (user.role === 'student' && user.regNo) {
+    const student = await prisma.student.findUnique({
+      where: { regNo: user.regNo },
+      select: { id: true },
+    })
+    return student?.id === allocation.studentId
+  }
+  return false
+}
+
 // ---- Data helpers ----
 async function roomOccupancyMap() {
   const students = await prisma.student.findMany({ where: { roomId: { not: null } } })
@@ -407,8 +490,8 @@ router.get('/admin/dashboard', async (req, res) => {
 
 // ---- Warden dashboard ----
 router.get('/warden/dashboard', async (req, res) => {
-  const user = await wardenUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
+  const user = await requestUser(req, res, WARDEN_ROLES)
+  if (!user) return
   const hostelId = user.hostelId
   const roomWhere = hostelId ? { hostelId } : {}
   const [rooms, students, allocations, complaints, leaves, blocks] = await Promise.all([
@@ -425,7 +508,12 @@ router.get('/warden/dashboard', async (req, res) => {
   const totalBeds = rooms.reduce((sum, r) => sum + r.seater, 0)
   const usedBeds = rooms.reduce((sum, r) => sum + (occ.get(r.id) || []).length, 0)
   const wardenAllocations = hostelId
-    ? allocations.filter((a) => a.hostelId === hostelId || (a.hostelPrefs || []).includes(hostelId))
+    ? allocations.filter((allocation) => (
+      allocation.hostelId === hostelId
+      || (allocation.hostelId === null
+        && Array.isArray(allocation.hostelPrefs)
+        && allocation.hostelPrefs.some((preferredHostelId) => num(preferredHostelId) === hostelId))
+    ))
     : allocations
   const scopedComplaints = complaints.filter((c) => studentIds.has(c.studentId))
   const scopedLeaves = leaves.filter((l) => studentIds.has(l.studentId))
@@ -519,6 +607,10 @@ router.get('/student/dashboard', async (req, res) => {
     allocation,
     todayMess,
     recentComplaints: complaints.slice(-3).reverse(),
+    recentRequests: leaves
+      .slice()
+      .sort((a, b) => b.id - a.id)
+      .slice(0, 5),
     recentNotices: notices.slice(0, 3),
   })
 })
@@ -976,28 +1068,41 @@ router.delete('/wardens/:id', async (req, res) => {
 router.get('/allocations', async (req, res) => {
   const status = req.query.status || 'all'
   const hostelId = req.query.hostelId
-  const warden = await wardenUser(req)
-  const admin = await adminUser(req)
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   let list = await prisma.allocation.findMany({ orderBy: { id: 'asc' } })
-  if (warden && !admin && warden.hostelId) {
-    const scope = warden.hostelId
-    list = list.filter((a) => a.hostelId === scope || (a.hostelPrefs || []).includes(scope))
+  if (WARDEN_ROLES.includes(user.role) && !(user.role === 'chief_warden' && !user.hostelId)) {
+    list = list.filter((allocation) => (
+      allocation.hostelId === user.hostelId
+      || (allocation.hostelId === null
+        && Array.isArray(allocation.hostelPrefs)
+        && allocation.hostelPrefs.some((preferredHostelId) => num(preferredHostelId) === user.hostelId))
+    ))
   }
   if (hostelId && hostelId !== 'all') {
-    list = list.filter((a) => a.hostelId === num(hostelId) || (a.hostelPrefs || []).includes(num(hostelId)))
+    list = list.filter((allocation) => (
+      allocation.hostelId === num(hostelId)
+      || (allocation.hostelId === null
+        && Array.isArray(allocation.hostelPrefs)
+        && allocation.hostelPrefs.some((preferredHostelId) => num(preferredHostelId) === num(hostelId)))
+    ))
   }
   if (status !== 'all') list = list.filter((a) => a.status === status)
   return ok(res, paginateList(req, [...list].sort((a, b) => b.id - a.id)))
 })
 
 router.get('/allocations/:id', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', 'student', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
-  return allocation ? ok(res, allocation) : fail(res, 'Allocation not found', 404)
+  if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
+  return ok(res, allocation)
 })
 
 router.get('/student/allocation', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return ok(res, [])
+  const student = await requestStudent(req, res)
+  if (!student) return
   const list = await prisma.allocation.findMany({
     where: { studentId: student.id },
     orderBy: { id: 'desc' },
@@ -1006,8 +1111,8 @@ router.get('/student/allocation', async (req, res) => {
 })
 
 router.get('/student/application', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return ok(res, [])
+  const student = await requestStudent(req, res)
+  if (!student) return
   const list = await prisma.allocation.findMany({
     where: { studentId: student.id },
     orderBy: { id: 'desc' },
@@ -1016,8 +1121,8 @@ router.get('/student/application', async (req, res) => {
 })
 
 router.post('/allocations', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return fail(res, 'Student record not found', 404)
+  const student = await requestStudent(req, res)
+  if (!student) return
   if (await studentActiveAllocation(student)) return fail(res, 'You already have an active application')
   const body = req.body || {}
   const prefs = Array.isArray(body.hostelPrefs) ? body.hostelPrefs.map(Number) : []
@@ -1051,8 +1156,11 @@ router.post('/allocations', async (req, res) => {
 })
 
 router.post('/allocations/:id/decision', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
   if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
   const body = req.body || {}
   const decision = body.decision
   const nextStatus = decision === 'waitlist' ? 'waitlisted' : decision
@@ -1074,8 +1182,11 @@ router.post('/allocations/:id/decision', async (req, res) => {
 })
 
 router.post('/allocations/:id/allocate', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
   if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
   if (!['approved', 'waitlisted'].includes(allocation.status)) {
     return fail(res, 'Only approved or waitlisted applications can be allocated')
   }
@@ -1086,11 +1197,20 @@ router.post('/allocations/:id/allocate', async (req, res) => {
   let room = null
   if (body.roomId) {
     room = await prisma.room.findUnique({ where: { id: num(body.roomId) } })
+    if (
+      WARDEN_ROLES.includes(user.role)
+      && !(user.role === 'chief_warden' && !user.hostelId)
+      && room?.hostelId !== user.hostelId
+    ) {
+      return fail(res, 'Forbidden', 403)
+    }
     if (room && (room.medicalReserved || (occ.get(room.id) || []).length >= room.seater)) {
       return fail(res, 'Selected room is not available')
     }
   } else {
-    const order = [...(allocation.hostelPrefs || []), ...(await eligibleHostels(student)).map((h) => h.id)]
+    const order = WARDEN_ROLES.includes(user.role) && !(user.role === 'chief_warden' && !user.hostelId)
+      ? [user.hostelId]
+      : [...(allocation.hostelPrefs || []), ...(await eligibleHostels(student)).map((h) => h.id)]
     for (const hid of order) {
       const found = await findRoomFor(student, allocation.roomType, hid, occ)
       if (found) {
@@ -1105,8 +1225,11 @@ router.post('/allocations/:id/allocate', async (req, res) => {
 })
 
 router.post('/allocations/:id/checkin', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
   if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
   if (allocation.status !== 'allocated') return fail(res, 'Only allocated rooms can be checked in')
   const updated = await prisma.allocation.update({
     where: { id: allocation.id },
@@ -1128,11 +1251,21 @@ router.post('/allocations/:id/checkin', async (req, res) => {
 })
 
 router.post('/allocations/:id/transfer', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
   if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
   if (allocation.status !== 'occupied') return fail(res, 'Only occupied allocations can be transferred')
   const body = req.body || {}
   const room = await prisma.room.findUnique({ where: { id: num(body.roomId) } })
+  if (
+    WARDEN_ROLES.includes(user.role)
+    && !(user.role === 'chief_warden' && !user.hostelId)
+    && room?.hostelId !== user.hostelId
+  ) {
+    return fail(res, 'Forbidden', 403)
+  }
   const occ = await roomOccupancyMap()
   if (!room || room.medicalReserved || (occ.get(room.id) || []).length >= room.seater) {
     return fail(res, 'Selected room is not available')
@@ -1175,8 +1308,11 @@ router.post('/allocations/:id/transfer', async (req, res) => {
 })
 
 router.post('/allocations/:id/cancel', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const allocation = await prisma.allocation.findUnique({ where: { id: num(req.params.id) } })
   if (!allocation) return fail(res, 'Allocation not found', 404)
+  if (!(await canAccessAllocation(user, allocation))) return fail(res, 'Forbidden', 403)
   const student = allocation.studentId
     ? await prisma.student.findUnique({ where: { id: allocation.studentId } })
     : null
@@ -1212,18 +1348,31 @@ router.post('/allocations/:id/cancel', async (req, res) => {
 
 // ---- Complaints ----
 router.get('/complaints', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const status = req.query.status || 'all'
   const filter = complaintStatusFilter[status] || complaintStatusFilter.all
-  const list = await prisma.complaint.findMany({ orderBy: { id: 'asc' } })
+  const studentIds = await requestStudentIds(user)
+  const where = studentIds === null ? {} : { studentId: { in: studentIds } }
+  const list = await prisma.complaint.findMany({ where, orderBy: { id: 'asc' } })
   return ok(res, paginateList(req, list.filter(filter)))
 })
 
 router.get('/complaints/:id', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', 'student', ...WARDEN_ROLES])
+  if (!user) return
   const complaint = await prisma.complaint.findUnique({ where: { id: num(req.params.id) } })
-  return complaint ? ok(res, complaint) : fail(res, 'Complaint not found', 404)
+  if (!complaint) return fail(res, 'Complaint not found', 404)
+  if (!(await canAccessRequestStudent(user, complaint.studentId))) return fail(res, 'Forbidden', 403)
+  return ok(res, complaint)
 })
 
 router.get('/complaints/:id/history', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', 'student', ...WARDEN_ROLES])
+  if (!user) return
+  const complaint = await prisma.complaint.findUnique({ where: { id: num(req.params.id) } })
+  if (!complaint) return fail(res, 'Complaint not found', 404)
+  if (!(await canAccessRequestStudent(user, complaint.studentId))) return fail(res, 'Forbidden', 403)
   const rows = await prisma.complaintAction.findMany({
     where: { complaintId: num(req.params.id) },
     orderBy: { id: 'asc' },
@@ -1238,8 +1387,8 @@ router.get('/complaints/:id/history', async (req, res) => {
 })
 
 router.post('/complaints', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return fail(res, 'Student record not found', 404)
+  const student = await requestStudent(req, res)
+  if (!student) return
   const body = req.body || {}
   const complaint = await prisma.complaint.create({
     data: {
@@ -1258,8 +1407,11 @@ router.post('/complaints', async (req, res) => {
 })
 
 router.post('/complaints/:id/action', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const complaint = await prisma.complaint.findUnique({ where: { id: num(req.params.id) } })
   if (!complaint) return fail(res, 'Complaint not found', 404)
+  if (!(await canAccessRequestStudent(user, complaint.studentId))) return fail(res, 'Forbidden', 403)
   const body = req.body || {}
   const updated = await prisma.complaint.update({
     where: { id: complaint.id },
@@ -1286,30 +1438,29 @@ router.post('/complaints/:id/action', async (req, res) => {
 })
 
 router.get('/student/complaints', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return ok(res, [])
+  const student = await requestStudent(req, res)
+  if (!student) return
   const list = await prisma.complaint.findMany({ where: { studentId: student.id }, orderBy: { id: 'asc' } })
   return ok(res, list)
 })
 
 // ---- Leaves ----
 router.get('/leaves', async (req, res) => {
-  const warden = await wardenUser(req)
-  if (!warden) {
-    return ok(res, paginateList(req, await prisma.leave.findMany({ orderBy: { id: 'asc' } })))
-  }
-  if (!warden.hostelId) {
-    return ok(res, paginateList(req, await prisma.leave.findMany({ orderBy: { id: 'asc' } })))
-  }
-  const students = await prisma.student.findMany({ where: { hostelId: warden.hostelId } })
-  const ids = new Set(students.map((s) => s.id))
-  const list = await prisma.leave.findMany({ orderBy: { id: 'asc' } })
-  return ok(res, paginateList(req, list.filter((l) => ids.has(l.studentId))))
+  const user = await requestUser(req, res, ['admin', 'security', ...WARDEN_ROLES])
+  if (!user) return
+  const studentIds = WARDEN_ROLES.includes(user.role) ? await requestStudentIds(user) : null
+  const where = studentIds === null ? {} : { studentId: { in: studentIds } }
+  const list = await prisma.leave.findMany({
+    where,
+    include: { student: { select: { name: true, regNo: true, hostelId: true } } },
+    orderBy: { id: 'asc' },
+  })
+  return ok(res, paginateList(req, list))
 })
 
 router.get('/student/leaves', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return ok(res, [])
+  const student = await requestStudent(req, res)
+  if (!student) return
   const list = await prisma.leave.findMany({
     where: { studentId: student.id },
     orderBy: { id: 'desc' },
@@ -1318,9 +1469,49 @@ router.get('/student/leaves', async (req, res) => {
 })
 
 router.post('/leaves', async (req, res) => {
-  const student = await studentScope(req)
-  if (!student) return fail(res, 'Student record not found', 404)
+  const student = await requestStudent(req, res)
+  if (!student) return
+  if (!student.hostelId) return fail(res, 'A hostel assignment is required to submit a request', 400)
   const body = req.body || {}
+  const requestType = body.requestType || 'LEAVE'
+  if (!['LEAVE', 'OUTPASS'].includes(requestType)) {
+    return fail(res, 'Request type must be LEAVE or OUTPASS', 400)
+  }
+  if (
+    ![body.from, body.to, body.reason, body.destination].every(
+      (value) => typeof value === 'string' && value.trim()
+    )
+  ) {
+    return fail(res, 'Dates, reason, and destination are required', 400)
+  }
+
+  let requestedDepartureAt = null
+  let expectedReturnAt = null
+  if (requestType === 'OUTPASS') {
+    const departure = new Date(body.requestedDepartureAt)
+    const expectedReturn = new Date(body.expectedReturnAt)
+    const hasTimeZone = (value) => /(?:Z|[+-]\d{2}:\d{2})$/i.test(value)
+    if (
+      typeof body.requestedDepartureAt !== 'string'
+      || !body.requestedDepartureAt.includes('T')
+      || !hasTimeZone(body.requestedDepartureAt)
+      || !Number.isFinite(departure.getTime())
+      || typeof body.expectedReturnAt !== 'string'
+      || !body.expectedReturnAt.includes('T')
+      || !hasTimeZone(body.expectedReturnAt)
+      || !Number.isFinite(expectedReturn.getTime())
+      || expectedReturn <= departure
+      || !/^\d{4}-\d{2}-\d{2}$/.test(body.from)
+      || !/^\d{4}-\d{2}-\d{2}$/.test(body.to)
+      || body.requestedDepartureAt.slice(0, 10) !== body.from
+      || body.expectedReturnAt.slice(0, 10) !== body.to
+    ) {
+      return fail(res, 'Out-Pass departure and expected return date/time must be valid and ordered', 400)
+    }
+    requestedDepartureAt = departure.toISOString()
+    expectedReturnAt = expectedReturn.toISOString()
+  }
+
   const settings = await prisma.setting.findFirst()
   const openLeave = await prisma.leave.findFirst({
     where: { studentId: student.id, status: { in: ['pending', 'approved', 'active'] } },
@@ -1334,24 +1525,34 @@ router.post('/leaves', async (req, res) => {
     data: {
       studentId: student.id,
       studentName: student.name,
+      requestType,
       from: body.from,
       to: body.to,
       reason: body.reason,
       destination: body.destination,
       parentApproved: false,
       status: 'pending',
+      requestedDepartureAt,
+      expectedReturnAt,
       departure: null,
       actualReturn: null,
     },
   })
-  await addNotification('Leave request', `${student.name} requested leave (${body.from} to ${body.to}).`, { audience: 'wardens', category: 'alert' })
+  const requestLabel = requestType === 'OUTPASS' ? 'Out-Pass' : 'Leave'
+  await addNotification(`${requestLabel} request`, `${student.name} requested ${requestLabel.toLowerCase()} (${body.from} to ${body.to}).`, { audience: 'wardens', category: 'alert' })
   return ok(res, leave, 201)
 })
 
 router.post('/leaves/:id/decision', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const leave = await prisma.leave.findUnique({ where: { id: num(req.params.id) } })
   if (!leave) return fail(res, 'Leave not found', 404)
+  if (!(await canAccessRequestStudent(user, leave.studentId))) return fail(res, 'Forbidden', 403)
   const body = req.body || {}
+  if (!['approved', 'rejected'].includes(body.status)) {
+    return fail(res, 'Decision must be approved or rejected', 400)
+  }
   const updated = await prisma.leave.update({
     where: { id: leave.id },
     data: {
@@ -1366,13 +1567,17 @@ router.post('/leaves/:id/decision', async (req, res) => {
     where: { id: leave.studentId },
     data: { leaveUsed: used },
   })
-  await logAudit(req.user?.name || 'Warden', `Leave ${body.status}`, 'Leave', leave.studentName || String(leave.studentId), leave.status, body.status, auditMeta(req))
+  const requestLabel = leave.requestType === 'OUTPASS' ? 'Out-Pass' : 'Leave'
+  await logAudit(req.user?.name || 'Warden', `${requestLabel} ${body.status}`, 'Leave', leave.studentName || String(leave.studentId), leave.status, body.status, auditMeta(req))
   return ok(res, updated)
 })
 
 router.post('/leaves/:id/activate', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const leave = await prisma.leave.findUnique({ where: { id: num(req.params.id) } })
   if (!leave) return fail(res, 'Leave not found', 404)
+  if (!(await canAccessRequestStudent(user, leave.studentId))) return fail(res, 'Forbidden', 403)
   if (leave.status !== 'approved') return fail(res, 'Only approved leaves can be activated', 400)
   const updated = await prisma.leave.update({
     where: { id: leave.id },
@@ -1395,8 +1600,11 @@ router.post('/leaves/:id/activate', async (req, res) => {
 })
 
 router.post('/leaves/:id/complete', async (req, res) => {
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const leave = await prisma.leave.findUnique({ where: { id: num(req.params.id) } })
   if (!leave) return fail(res, 'Leave not found', 404)
+  if (!(await canAccessRequestStudent(user, leave.studentId))) return fail(res, 'Forbidden', 403)
   if (leave.status !== 'active') return fail(res, 'Only active leaves can be completed', 400)
   const updated = await prisma.leave.update({
     where: { id: leave.id },

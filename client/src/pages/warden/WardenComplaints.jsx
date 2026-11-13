@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { App as AntApp, Button, Card, Descriptions, Modal, Skeleton, Space, Tabs, Timeline, Typography } from 'antd'
+import { Alert, App as AntApp, Button, Card, Descriptions, Modal, Skeleton, Space, Tabs, Timeline, Typography } from 'antd'
 import { EyeOutlined, ToolOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { useAuth } from '../../context/auth'
@@ -29,8 +29,14 @@ export default function WardenComplaints() {
   const [actionOpen, setActionOpen] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { data, loading, reload } = useResource(`/complaints?status=${tab}`)
-  const { data: students } = useResource('/students')
+  const { data, loading, reload, error } = useResource(`/complaints?status=${tab}`, {
+    refreshIntervalMs: 30000,
+    refreshOnFocus: true,
+  })
+  const { data: students } = useResource('/students', {
+    refreshIntervalMs: 30000,
+    refreshOnFocus: true,
+  })
 
   const hostelStudentIds = useMemo(
     () =>
@@ -108,6 +114,16 @@ export default function WardenComplaints() {
         title="Complaints"
         subtitle="Student complaints raised in your hostel."
       />
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Unable to refresh complaints"
+          description={error.message || 'The latest complaints could not be loaded.'}
+          action={<Button size="small" onClick={reload}>Retry</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Card>
         <Tabs items={TABS} activeKey={tab} onChange={setTab} />

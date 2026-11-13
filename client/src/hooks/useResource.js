@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { resourceApi } from '../api/client'
 
-export function useResource(path) {
+export function useResource(path, { refreshIntervalMs = 0, refreshOnFocus = false } = {}) {
   const [requestVersion, setRequestVersion] = useState(0)
   const [state, setState] = useState({
     path: null,
@@ -54,6 +54,30 @@ export function useResource(path) {
       active = false
     }
   }, [path, requestVersion])
+
+  useEffect(() => {
+    if (!refreshIntervalMs && !refreshOnFocus) return undefined
+
+    const refresh = () => {
+      if (document.visibilityState === 'visible') reload()
+    }
+
+    if (refreshOnFocus) {
+      window.addEventListener('focus', refresh)
+      document.addEventListener('visibilitychange', refresh)
+    }
+    const intervalId = refreshIntervalMs > 0
+      ? window.setInterval(refresh, refreshIntervalMs)
+      : null
+
+    return () => {
+      if (refreshOnFocus) {
+        window.removeEventListener('focus', refresh)
+        document.removeEventListener('visibilitychange', refresh)
+      }
+      if (intervalId !== null) window.clearInterval(intervalId)
+    }
+  }, [refreshIntervalMs, refreshOnFocus, reload])
 
   return {
     data: state.path === path ? state.data : [],

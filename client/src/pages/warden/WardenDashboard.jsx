@@ -24,6 +24,7 @@ import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 
 const PALETTE = ['#04335C', '#1B8A6B', '#E8A13A', '#C0392B', '#5A67D8']
+const DASHBOARD_REFRESH_INTERVAL_MS = 30000
 
 function toChartData(record) {
   return Object.entries(record || {}).map(([name, value]) => ({ name, value }))
@@ -44,25 +45,40 @@ export default function WardenDashboard() {
 
   useEffect(() => {
     let active = true
-    resourceApi
-      .get('/warden/dashboard')
-      .then((result) => {
-        if (active) setData(result)
-      })
-      .catch((requestError) => {
-        if (active) setError(requestError)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    let latestRequest = 0
+    const load = async () => {
+      const requestId = ++latestRequest
+      try {
+        const result = await resourceApi.get('/warden/dashboard')
+        if (active && requestId === latestRequest) {
+          setData(result)
+          setError(null)
+        }
+      } catch (requestError) {
+        if (active && requestId === latestRequest) setError(requestError)
+      } finally {
+        if (active && requestId === latestRequest) setLoading(false)
+      }
+    }
+    const refreshIfVisible = () => {
+      if (document.visibilityState === 'visible') void load()
+    }
+
+    void load()
+    const intervalId = window.setInterval(refreshIfVisible, DASHBOARD_REFRESH_INTERVAL_MS)
+    window.addEventListener('focus', refreshIfVisible)
+    document.addEventListener('visibilitychange', refreshIfVisible)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshIfVisible)
+      document.removeEventListener('visibilitychange', refreshIfVisible)
     }
   }, [])
 
-  if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
-  if (error || !data) {
+  if (loading && !data) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (!data) {
     return (
       <Alert
         type="error"
@@ -81,6 +97,15 @@ export default function WardenDashboard() {
         title="Dashboard"
         subtitle="Overview of your hostel: students, rooms and day-to-day operations."
       />
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Dashboard refresh failed"
+          description={error.message || 'The latest dashboard data could not be loaded.'}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} md={6}>

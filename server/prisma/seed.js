@@ -28,6 +28,7 @@ const baseUsers = [
   { id: 6, name: 'Anil Mess Manager', username: 'mess', email: 'mess@hostel.com', password: 'mess123', role: 'mess_manager' },
   { id: 7, name: 'Security Guard', username: 'security', email: 'security@hostel.com', password: 'security123', role: 'security' },
   { id: 8, name: 'Housekeeping Staff', username: 'housekeeping', email: 'house@hostel.com', password: 'house123', role: 'housekeeping', hostelId: 5 },
+  { id: 9, name: 'Azad Bhawan Warden', username: 'azadwarden', email: 'azadwarden@hostel.com', password: 'warden123', role: 'warden', hostelId: 1 },
   { id: 100, name: 'Parent User', username: 'parent', email: 'parent@hostel.com', password: 'parent123', role: 'parent', studentId: 40 },
 ]
 
@@ -318,7 +319,7 @@ const leaves = [
   { id: 1, studentId: 40, studentName: 'Raavi Aggarwal', from: '2026-08-20', to: '2026-08-22', reason: 'Family function', destination: 'Shimla', parentApproved: false, status: 'pending', departure: null, actualReturn: null },
   { id: 2, studentId: 43, studentName: 'Aarya Gupta', from: '2026-08-18', to: '2026-08-19', reason: 'Medical appointment', destination: 'Solan', parentApproved: true, status: 'approved', departure: null, actualReturn: null },
   { id: 3, studentId: 44, studentName: 'Anvesha Vijan', from: '2026-08-15', to: '2026-08-15', reason: 'Personal work', destination: 'Home', parentApproved: true, status: 'rejected', departure: null, actualReturn: null },
-  { id: 4, studentId: 10, studentName: 'Aarav Sharma', from: '2026-08-14', to: '2026-08-14', reason: 'Family visit', destination: 'Solan', parentApproved: true, status: 'active', departure: '2026-08-14 18:05', actualReturn: null },
+  { id: 4, studentId: 10, studentName: 'Aarav Sharma', from: '2026-08-14', to: '2026-08-14', reason: 'Family visit', destination: 'Solan', parentApproved: true, status: 'completed', departure: '2026-08-14 18:05', actualReturn: '2026-08-14 20:12' },
 ]
 
 for (const s of students) {

@@ -9,8 +9,8 @@ vi.mock('../api/client', () => ({ resourceApi }))
 
 const { useResource } = await import('../hooks/useResource')
 
-function Probe({ path }) {
-  const { data, error, loading, reload } = useResource(path)
+function Probe({ path, options }) {
+  const { data, error, loading, reload } = useResource(path, options)
   return (
     <>
       <span data-testid="data">{data.map((item) => item.id).join(',')}</span>
@@ -64,5 +64,40 @@ describe('useResource', () => {
     await act(async () => pending['/rooms']([{ id: 'current' }]))
     expect(screen.getByTestId('data')).toHaveTextContent('current')
     expect(screen.getByTestId('loading')).toHaveTextContent('false')
+  })
+
+  it('refreshes on focus and at the configured interval while visible', async () => {
+    vi.useFakeTimers()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    resourceApi.get.mockResolvedValue([{ id: 'refreshed' }])
+    let unmount
+
+    try {
+      const rendered = render(
+        <Probe
+          path="/leaves"
+          options={{ refreshIntervalMs: 30000, refreshOnFocus: true }}
+        />
+      )
+      unmount = rendered.unmount
+
+      await act(async () => Promise.resolve())
+      expect(resourceApi.get).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'))
+        await Promise.resolve()
+      })
+      expect(resourceApi.get).toHaveBeenCalledTimes(2)
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30000)
+      })
+      expect(resourceApi.get).toHaveBeenCalledTimes(3)
+    } finally {
+      unmount?.()
+      visibility.mockRestore()
+      vi.useRealTimers()
+    }
   })
 })

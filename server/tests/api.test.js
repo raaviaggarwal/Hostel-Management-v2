@@ -210,6 +210,17 @@ describe('student creation', () => {
 })
 
 describe('warden scope', () => {
+  it('requires an authenticated staff role for request lists', async () => {
+    const nivi = await byName('Nivi Jha')
+    for (const endpoint of ['/api/leaves', '/api/complaints', '/api/allocations', '/api/warden/dashboard']) {
+      const anonymous = await request(app).get(endpoint)
+      expect(anonymous.status).toBe(401)
+
+      const student = await request(app).get(endpoint).set(auth('student', nivi.id))
+      expect(student.status).toBe(403)
+    }
+  })
+
   it('only exposes allocations for the warden hostel', async () => {
     const warden = await userByUsername('warden')
     const list = await get('/api/allocations', auth('warden', warden.id))
@@ -218,9 +229,44 @@ describe('warden scope', () => {
     expect(list.some((a) => a.studentName === 'Aditi Deshmukh')).toBe(false)
     for (const a of list) {
       const scoped =
-        a.hostelId === warden.hostelId || (a.hostelPrefs || []).includes(warden.hostelId)
+        a.hostelId === warden.hostelId
+        || (a.hostelId === null && (a.hostelPrefs || []).includes(warden.hostelId))
       expect(scoped).toBe(true)
     }
+
+    const aditiAllocation = await allocByName('Aditi Deshmukh')
+    const meena = await userByUsername('meena')
+    const meenaList = await get('/api/allocations', auth('warden', meena.id))
+    expect(meenaList.some((allocation) => allocation.id === aditiAllocation.id)).toBe(true)
+    const admin = await userByUsername('admin')
+    const adminList = await get('/api/allocations', auth('admin', admin.id))
+    expect(adminList.some((allocation) => allocation.id === aditiAllocation.id)).toBe(true)
+    const forbiddenDetail = await request(app)
+      .get(`/api/allocations/${aditiAllocation.id}`)
+      .set(auth('warden', warden.id))
+    expect(forbiddenDetail.status).toBe(403)
+
+    const forbiddenDecision = await post(
+      `/api/allocations/${aditiAllocation.id}/decision`,
+      { decision: 'approved' },
+      auth('warden', warden.id)
+    )
+    expect(forbiddenDecision.status).toBe(403)
+
+    await post(
+      `/api/allocations/${aditiAllocation.id}/decision`,
+      { decision: 'approved' },
+      auth('warden', meena.id)
+    )
+    const roomAtOtherHostel = await prisma.room.findFirst({
+      where: { hostelId: { not: meena.hostelId }, medicalReserved: false },
+    })
+    const forbiddenAllocation = await post(
+      `/api/allocations/${aditiAllocation.id}/allocate`,
+      { roomId: roomAtOtherHostel.id },
+      auth('warden', meena.id)
+    )
+    expect(forbiddenAllocation.status).toBe(403)
   })
 
   it('returns warden dashboard stats for the hostel', async () => {
@@ -234,13 +280,31 @@ describe('warden scope', () => {
 
   it('lets a hostel warden see a fresh application that prefers their hostel', async () => {
     const warden = await userByUsername('warden')
+    const otherWarden = await userByUsername('meena')
     const tushar = await byName('Tushar Aggarwal')
     const created = await post('/api/allocations', { hostelPrefs: [2] }, auth('student', tushar.id))
     expect(created.status).toBe(201)
+    const persisted = await prisma.allocation.findUnique({ where: { id: created.body.id } })
+    expect(persisted).toMatchObject({ studentId: tushar.id, status: 'applied', hostelId: null })
+
     const list = await get('/api/allocations', auth('warden', warden.id))
     const mine = list.find((a) => a.id === created.body.id)
     expect(mine).toBeTruthy()
     expect(mine.status).toBe('applied')
+
+    const otherList = await get('/api/allocations', auth('warden', otherWarden.id))
+    expect(otherList.some((a) => a.id === created.body.id)).toBe(false)
+    const studentList = await get('/api/student/allocation', auth('student', tushar.id))
+    expect(studentList.some((a) => a.id === created.body.id)).toBe(true)
+    const ownDetail = await request(app)
+      .get(`/api/allocations/${created.body.id}`)
+      .set(auth('student', tushar.id))
+    expect(ownDetail.status).toBe(200)
+    const otherStudent = await byName('Aarav Sharma')
+    const forbiddenDetail = await request(app)
+      .get(`/api/allocations/${created.body.id}`)
+      .set(auth('student', otherStudent.id))
+    expect(forbiddenDetail.status).toBe(403)
   })
 
   it('lets a chief warden see all allocations', async () => {
@@ -277,11 +341,12 @@ describe('allocation workflow', () => {
   it('moves an application to approved and allocates a room', async () => {
     const aditi = await byName('Aditi Deshmukh')
     const allocation = await allocByName('Aditi Deshmukh')
+    const meena = await userByUsername('meena')
 
     const decision = await post(
       `/api/allocations/${allocation.id}/decision`,
       { decision: 'approved' },
-      auth('warden', 2)
+      auth('warden', meena.id)
     )
     expect(decision.status).toBe(200)
     expect(decision.body.status).toBe('approved')
@@ -289,7 +354,7 @@ describe('allocation workflow', () => {
     const allocated = await post(
       `/api/allocations/${allocation.id}/allocate`,
       {},
-      auth('warden', 2)
+      auth('warden', meena.id)
     )
     expect(allocated.status).toBe(200)
     expect(allocated.body.status).toBe('allocated')
@@ -304,9 +369,11 @@ describe('allocation workflow', () => {
 
   it('checks an allocated student in', async () => {
     const allocation = await allocByName('Aditi Deshmukh')
-    await post(`/api/allocations/${allocation.id}/decision`, { decision: 'approved' })
-    await post(`/api/allocations/${allocation.id}/allocate`, {})
-    const checkin = await post(`/api/allocations/${allocation.id}/checkin`)
+    const meena = await userByUsername('meena')
+    const headers = auth('warden', meena.id)
+    await post(`/api/allocations/${allocation.id}/decision`, { decision: 'approved' }, headers)
+    await post(`/api/allocations/${allocation.id}/allocate`, {}, headers)
+    const checkin = await post(`/api/allocations/${allocation.id}/checkin`, {}, headers)
     expect(checkin.status).toBe(200)
     expect(checkin.body.status).toBe('occupied')
     const aditi = await byName('Aditi Deshmukh')
@@ -316,11 +383,13 @@ describe('allocation workflow', () => {
   it('waitlists then allocates a room', async () => {
     const simran = await byName('Simran Kaur')
     const allocation = await allocByName('Simran Kaur')
+    const admin = await userByUsername('admin')
+    const headers = auth('admin', admin.id)
 
-    const waitlist = await post(`/api/allocations/${allocation.id}/decision`, { decision: 'waitlist' })
+    const waitlist = await post(`/api/allocations/${allocation.id}/decision`, { decision: 'waitlist' }, headers)
     expect(waitlist.body.status).toBe('waitlisted')
 
-    const allocated = await post(`/api/allocations/${allocation.id}/allocate`, {})
+    const allocated = await post(`/api/allocations/${allocation.id}/allocate`, {}, headers)
     expect(allocated.status).toBe(200)
     expect(allocated.body.status).toBe('allocated')
     const updated = await prisma.student.findUnique({ where: { id: simran.id } })
@@ -329,9 +398,11 @@ describe('allocation workflow', () => {
 
   it('transfers an occupied allocation to another room', async () => {
     const allocation = await allocByName('Aditi Deshmukh')
-    await post(`/api/allocations/${allocation.id}/decision`, { decision: 'approved' })
-    await post(`/api/allocations/${allocation.id}/allocate`, {})
-    await post(`/api/allocations/${allocation.id}/checkin`)
+    const meena = await userByUsername('meena')
+    const headers = auth('warden', meena.id)
+    await post(`/api/allocations/${allocation.id}/decision`, { decision: 'approved' }, headers)
+    await post(`/api/allocations/${allocation.id}/allocate`, {}, headers)
+    await post(`/api/allocations/${allocation.id}/checkin`, {}, headers)
 
     const current = await prisma.allocation.findUnique({ where: { id: allocation.id } })
     const occupiedStudents = await prisma.student.findMany({ where: { roomId: { not: null } } })
@@ -347,7 +418,7 @@ describe('allocation workflow', () => {
     const res = await post(
       `/api/allocations/${allocation.id}/transfer`,
       { roomId: target.id },
-      auth('warden', 2)
+      headers
     )
     expect(res.status).toBe(200)
     expect(res.body.roomNo).toBe(target.roomNo)
@@ -361,9 +432,11 @@ describe('allocation workflow', () => {
   it('cancels an allocation and releases the student', async () => {
     const kabir = await byName('Kabir Malhotra')
     const allocation = await allocByName('Kabir Malhotra')
-    await post(`/api/allocations/${allocation.id}/allocate`, {})
+    const admin = await userByUsername('admin')
+    const headers = auth('admin', admin.id)
+    await post(`/api/allocations/${allocation.id}/allocate`, {}, headers)
 
-    const res = await post(`/api/allocations/${allocation.id}/cancel`)
+    const res = await post(`/api/allocations/${allocation.id}/cancel`, {}, headers)
     expect(res.status).toBe(200)
     expect(res.body.status).toBe('cancelled')
     const updated = await prisma.student.findUnique({ where: { id: kabir.id } })
@@ -386,6 +459,9 @@ describe('leave workflow', () => {
 
   it('lets a student request leave and warden approve it', async () => {
     const nivi = await byName('Nivi Jha')
+    const meena = await userByUsername('meena')
+    const otherWarden = await userByUsername('warden')
+    const dashboardBefore = await get('/api/warden/dashboard', auth('warden', meena.id))
     const created = await post(
       '/api/leaves',
       { from: '2026-08-17', to: '2026-08-17', reason: 'Shopping', destination: 'Chandigarh' },
@@ -393,15 +469,40 @@ describe('leave workflow', () => {
     )
     expect(created.status).toBe(201)
     expect(created.body.status).toBe('pending')
+    expect(created.body.studentId).toBe(nivi.id)
     expect(created.body.studentName).toBe('Nivi Jha')
+    const persisted = await prisma.leave.findUnique({ where: { id: created.body.id } })
+    expect(persisted).toMatchObject({ studentId: nivi.id, status: 'pending' })
 
+    const sameHostelLeaves = await get('/api/leaves', auth('warden', meena.id))
+    const otherHostelLeaves = await get('/api/leaves', auth('warden', otherWarden.id))
+    expect(sameHostelLeaves.some((leave) => leave.id === created.body.id)).toBe(true)
+    expect(otherHostelLeaves.some((leave) => leave.id === created.body.id)).toBe(false)
+    const admin = await userByUsername('admin')
+    const adminLeaves = await get('/api/leaves', auth('admin', admin.id))
+    expect(adminLeaves.some((leave) => leave.id === created.body.id)).toBe(true)
+    const dashboardAfter = await get('/api/warden/dashboard', auth('warden', meena.id))
+    expect(dashboardAfter.stats.pendingLeaves).toBe(dashboardBefore.stats.pendingLeaves + 1)
+
+    const forbiddenDecision = await post(
+      `/api/leaves/${created.body.id}/decision`,
+      { status: 'approved' },
+      auth('warden', otherWarden.id)
+    )
+    expect(forbiddenDecision.status).toBe(403)
     const approved = await post(
       `/api/leaves/${created.body.id}/decision`,
       { status: 'approved' },
-      auth('warden', 3)
+      auth('warden', meena.id)
     )
     expect(approved.status).toBe(200)
     expect(approved.body.status).toBe('approved')
+
+    const studentLeaves = await get('/api/student/leaves', auth('student', nivi.id))
+    const otherStudent = await byName('Aarav Sharma')
+    const otherStudentLeaves = await get('/api/student/leaves', auth('student', otherStudent.id))
+    expect(studentLeaves.some((leave) => leave.id === created.body.id && leave.status === 'approved')).toBe(true)
+    expect(otherStudentLeaves.some((leave) => leave.id === created.body.id)).toBe(false)
   })
 
   it('activates an approved leave on departure and completes it on return', async () => {
@@ -413,7 +514,7 @@ describe('leave workflow', () => {
     )
     await post(`/api/leaves/${created.body.id}/decision`, { status: 'approved' }, auth('warden', 3))
 
-    const active = await post(`/api/leaves/${created.body.id}/activate`, {})
+    const active = await post(`/api/leaves/${created.body.id}/activate`, {}, auth('warden', 3))
     expect(active.status).toBe(200)
     expect(active.body.status).toBe('active')
     expect(active.body.departure).toBeTruthy()
@@ -423,7 +524,7 @@ describe('leave workflow', () => {
     })
     expect(exitRecord).toBeTruthy()
 
-    const completed = await post(`/api/leaves/${created.body.id}/complete`, {})
+    const completed = await post(`/api/leaves/${created.body.id}/complete`, {}, auth('warden', 3))
     expect(completed.status).toBe(200)
     expect(completed.body.status).toBe('completed')
     expect(completed.body.actualReturn).toBeTruthy()
@@ -439,6 +540,176 @@ describe('leave workflow', () => {
     const list = await get('/api/leaves', auth('warden', meena.id))
     expect(list.some((l) => l.studentName === 'Raavi Aggarwal')).toBe(true)
     expect(list.some((l) => l.studentName === 'Aarav Sharma')).toBe(false)
+  })
+})
+
+describe('explicit Out-Pass workflow', () => {
+  it('persists typed date/time requests for the default Student and exposes decisions to that Student', async () => {
+    const studentLogin = await post('/api/auth/login', {
+      usernameOrEmail: 'student',
+      password: 'student123',
+    })
+    expect(studentLogin.status).toBe(200)
+    const studentUser = await userByUsername('student')
+    const student = await prisma.student.findUnique({ where: { regNo: studentUser.regNo } })
+    expect(student).toBeTruthy()
+    expect(student.hostelId).toBe(1)
+
+    const warden = await userByUsername('azadwarden')
+    expect(warden.hostelId).toBe(student.hostelId)
+    const wardenLogin = await post('/api/auth/login', {
+      usernameOrEmail: 'azadwarden',
+      password: 'warden123',
+    })
+    expect(wardenLogin.status).toBe(200)
+    const studentAuth = { Authorization: `Bearer ${studentLogin.body.token}` }
+    const wardenAuth = { Authorization: `Bearer ${wardenLogin.body.token}` }
+    const otherWarden = await userByUsername('warden')
+    const otherWardenAuth = auth('warden', otherWarden.id)
+    const otherStudent = await byName('Nivi Jha')
+    const dashboardBefore = await get('/api/student/dashboard', studentAuth)
+
+    const rejectedRequest = await post(
+      '/api/leaves',
+      {
+        requestType: 'OUTPASS',
+        from: '2026-11-15',
+        to: '2026-11-15',
+        requestedDepartureAt: '2026-11-15T14:00:00+05:30',
+        expectedReturnAt: '2026-11-15T20:30:00+05:30',
+        reason: 'Personal errand',
+        destination: 'Solan',
+      },
+      studentAuth
+    )
+    expect(rejectedRequest.status).toBe(201)
+    expect(rejectedRequest.body).toMatchObject({
+      requestType: 'OUTPASS',
+      studentId: student.id,
+      studentName: student.name,
+      requestedDepartureAt: '2026-11-15T08:30:00.000Z',
+      expectedReturnAt: '2026-11-15T15:00:00.000Z',
+      status: 'pending',
+    })
+    const persistedRequest = await prisma.leave.findUnique({
+      where: { id: rejectedRequest.body.id },
+    })
+    expect(persistedRequest).toMatchObject({
+      requestType: 'OUTPASS',
+      studentId: student.id,
+      from: '2026-11-15',
+      to: '2026-11-15',
+      requestedDepartureAt: '2026-11-15T08:30:00.000Z',
+      expectedReturnAt: '2026-11-15T15:00:00.000Z',
+      reason: 'Personal errand',
+      destination: 'Solan',
+      parentApproved: false,
+      status: 'pending',
+    })
+
+    const sameHostelRequests = await get('/api/leaves', wardenAuth)
+    const otherHostelRequests = await get('/api/leaves', otherWardenAuth)
+    const visibleRequest = sameHostelRequests.find((item) => item.id === rejectedRequest.body.id)
+    expect(visibleRequest.studentName).toBe(student.name)
+    expect(visibleRequest.student.regNo).toBe(student.regNo)
+    expect(otherHostelRequests.some((item) => item.id === rejectedRequest.body.id)).toBe(false)
+    const studentDashboardPending = await get('/api/student/dashboard', studentAuth)
+    expect(studentDashboardPending.stats.leavesPending).toBe(dashboardBefore.stats.leavesPending + 1)
+    expect(studentDashboardPending.recentRequests[0]).toMatchObject({
+      id: rejectedRequest.body.id,
+      requestType: 'OUTPASS',
+      status: 'pending',
+    })
+
+    const forbiddenCrossHostelDecision = await post(
+      `/api/leaves/${rejectedRequest.body.id}/decision`,
+      { status: 'rejected' },
+      otherWardenAuth
+    )
+    expect(forbiddenCrossHostelDecision.status).toBe(403)
+    const forbiddenStudentDecision = await post(
+      `/api/leaves/${rejectedRequest.body.id}/decision`,
+      { status: 'approved' },
+      auth('student', otherStudent.id)
+    )
+    expect(forbiddenStudentDecision.status).toBe(403)
+
+    const rejected = await post(
+      `/api/leaves/${rejectedRequest.body.id}/decision`,
+      { status: 'rejected' },
+      wardenAuth
+    )
+    expect(rejected.status).toBe(200)
+    expect((await prisma.leave.findUnique({ where: { id: rejected.body.id } })).status).toBe('rejected')
+
+    const approvedRequest = await post(
+      '/api/leaves',
+      {
+        requestType: 'OUTPASS',
+        from: '2026-11-16',
+        to: '2026-11-16',
+        requestedDepartureAt: '2026-11-16T09:00:00.000Z',
+        expectedReturnAt: '2026-11-16T18:00:00.000Z',
+        reason: 'Medical appointment',
+        destination: 'JUIT Health Centre',
+      },
+      studentAuth
+    )
+    expect(approvedRequest.status).toBe(201)
+    const approved = await post(
+      `/api/leaves/${approvedRequest.body.id}/decision`,
+      { status: 'approved' },
+      wardenAuth
+    )
+    expect(approved.status).toBe(200)
+    expect(approved.body.status).toBe('approved')
+    expect(approved.body.parentApproved).toBe(true)
+
+    const studentRequests = await get('/api/student/leaves', studentAuth)
+    expect(studentRequests.find((item) => item.id === rejectedRequest.body.id).status).toBe('rejected')
+    expect(studentRequests.find((item) => item.id === approvedRequest.body.id).status).toBe('approved')
+    const otherStudentRequests = await get('/api/student/leaves', auth('student', otherStudent.id))
+    expect(otherStudentRequests.some((item) => (
+      item.id === rejectedRequest.body.id || item.id === approvedRequest.body.id
+    ))).toBe(false)
+    const studentDashboardAfterDecision = await get('/api/student/dashboard', studentAuth)
+    expect(studentDashboardAfterDecision.stats.leavesPending).toBe(dashboardBefore.stats.leavesPending)
+    expect(studentDashboardAfterDecision.recentRequests[0]).toMatchObject({
+      id: approvedRequest.body.id,
+      status: 'approved',
+    })
+
+    const invalidOutpass = await post(
+      '/api/leaves',
+      {
+        requestType: 'OUTPASS',
+        from: '2026-11-17',
+        to: '2026-11-17',
+        reason: 'Missing time values',
+        destination: 'Solan',
+      },
+      studentAuth
+    )
+    expect(invalidOutpass.status).toBe(400)
+  })
+
+  it('does not infer OUTPASS from a one-day regular leave', async () => {
+    const nivi = await byName('Nivi Jha')
+    const leave = await post(
+      '/api/leaves',
+      {
+        from: '2026-11-20',
+        to: '2026-11-20',
+        reason: 'A one-day leave',
+        destination: 'Solan',
+      },
+      auth('student', nivi.id)
+    )
+
+    expect(leave.status).toBe(201)
+    expect(leave.body.requestType).toBe('LEAVE')
+    expect(leave.body.requestedDepartureAt).toBeNull()
+    expect(leave.body.expectedReturnAt).toBeNull()
   })
 })
 
@@ -578,7 +849,12 @@ describe('maintenance tickets', () => {
 })
 
 describe('complaint preferred visiting hours', () => {
-  it('stores the preferred visiting hours with a complaint', async () => {
+  it('stores a complaint and exposes it only to its student and assigned hostel staff', async () => {
+    const nivi = await byName('Nivi Jha')
+    const aarav = await byName('Aarav Sharma')
+    const meena = await userByUsername('meena')
+    const warden = await userByUsername('warden')
+    const dashboardBefore = await get('/api/warden/dashboard', auth('warden', meena.id))
     const created = await post(
       '/api/complaints',
       {
@@ -586,14 +862,75 @@ describe('complaint preferred visiting hours', () => {
         complaintDetails: 'Light flickers in room',
         preferredVisitingHours: '10-12',
       },
-      auth('student', 10)
+      auth('student', nivi.id)
     )
     expect(created.status).toBe(201)
     expect(created.body.preferredVisitingHours).toBe('10-12')
+    expect(created.body.studentId).toBe(nivi.id)
+    const persisted = await prisma.complaint.findUnique({ where: { id: created.body.id } })
+    expect(persisted).toMatchObject({ studentId: nivi.id, complaintStatus: null })
 
-    const mine = await get('/api/student/complaints', auth('student', 10))
+    const sameHostel = await get('/api/complaints?status=new', auth('warden', meena.id))
+    const otherHostel = await get('/api/complaints?status=new', auth('warden', warden.id))
+    expect(sameHostel.some((complaint) => complaint.id === created.body.id)).toBe(true)
+    expect(otherHostel.some((complaint) => complaint.id === created.body.id)).toBe(false)
+    const dashboardAfter = await get('/api/warden/dashboard', auth('warden', meena.id))
+    expect(dashboardAfter.stats.newComplaints).toBe(dashboardBefore.stats.newComplaints + 1)
+
+    const mine = await get('/api/student/complaints', auth('student', nivi.id))
     const stored = mine.find((c) => c.id === created.body.id)
     expect(stored.preferredVisitingHours).toBe('10-12')
+    const otherStudentComplaints = await get('/api/student/complaints', auth('student', aarav.id))
+    expect(otherStudentComplaints.some((complaint) => complaint.id === created.body.id)).toBe(false)
+    const admin = await userByUsername('admin')
+    const adminList = await get('/api/complaints', auth('admin', admin.id))
+    expect(adminList.some((complaint) => complaint.id === created.body.id)).toBe(true)
+
+    const ownDetail = await request(app)
+      .get(`/api/complaints/${created.body.id}`)
+      .set(auth('student', nivi.id))
+    expect(ownDetail.status).toBe(200)
+    const forbiddenStudentDetail = await request(app)
+      .get(`/api/complaints/${created.body.id}`)
+      .set(auth('student', aarav.id))
+    expect(forbiddenStudentDetail.status).toBe(403)
+
+    const forbiddenDetail = await request(app)
+      .get(`/api/complaints/${created.body.id}`)
+      .set(auth('warden', warden.id))
+    expect(forbiddenDetail.status).toBe(403)
+
+    const forbiddenAction = await post(
+      `/api/complaints/${created.body.id}/action`,
+      { status: 'Resolved', remark: 'Should be blocked' },
+      auth('warden', warden.id)
+    )
+    expect(forbiddenAction.status).toBe(403)
+
+    const action = await post(
+      `/api/complaints/${created.body.id}/action`,
+      { status: 'In Process', remark: 'Electrician assigned' },
+      auth('warden', meena.id)
+    )
+    expect(action.status).toBe(200)
+    const updatedMine = await get('/api/student/complaints', auth('student', nivi.id))
+    expect(updatedMine.find((complaint) => complaint.id === created.body.id).complaintStatus).toBe('In Process')
+    const ownHistory = await request(app)
+      .get(`/api/complaints/${created.body.id}/history`)
+      .set(auth('student', nivi.id))
+    expect(ownHistory.status).toBe(200)
+    expect(ownHistory.body).toHaveLength(1)
+    const forbiddenHistory = await request(app)
+      .get(`/api/complaints/${created.body.id}/history`)
+      .set(auth('warden', warden.id))
+    expect(forbiddenHistory.status).toBe(403)
+
+    const anonymous = await request(app).get('/api/complaints')
+    expect(anonymous.status).toBe(401)
+    const studentStaffList = await request(app)
+      .get('/api/complaints')
+      .set(auth('student', nivi.id))
+    expect(studentStaffList.status).toBe(403)
   })
 })
 
