@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import dayjs from 'dayjs'
 
 const { resourceApi, requestData } = vi.hoisted(() => ({
   resourceApi: { post: vi.fn() },
@@ -124,8 +125,8 @@ describe('Warden pending Out-Passes', () => {
     expect(rows).toContain('"name":"Aarav Sharma"')
     expect(rows).toContain('"regNo":"231030101"')
     expect(rows).toContain('"reason":"Medical appointment"')
-    expect(rows).toContain('2026-11-15 14:00')
-    expect(rows).toContain('2026-11-15 20:30')
+    expect(rows).toContain(dayjs(requestData.leaves[0].requestedDepartureAt).format('YYYY-MM-DD HH:mm'))
+    expect(rows).toContain(dayjs(requestData.leaves[0].expectedReturnAt).format('YYYY-MM-DD HH:mm'))
     expect(rows).not.toContain('Regular leave')
     expect(rows).not.toContain('Rejected Student')
   })
