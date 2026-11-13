@@ -57,8 +57,8 @@ export default function Navbar() {
     markAllRead()
     try {
       await resourceApi.post('/notifications/read-all', {})
-    } catch {
-      // ignore failures; local state already reflects the action
+    } catch (error) {
+      message.error(error.message || 'Unable to mark notifications as read')
     }
     refresh()
   }

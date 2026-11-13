@@ -95,7 +95,7 @@ export default function Students() {
     setSaving(true)
 
     try {
-      await resourceApi.update(`/students/${editing.id}`, values)
+      await resourceApi.update('/students', editing.id, values)
 
       message.success('Student updated successfully')
       setEditingOpen(false)

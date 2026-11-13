@@ -1,20 +1,45 @@
 import { useEffect, useState } from 'react'
-import { Card, Descriptions, Empty, Skeleton, Tag } from 'antd'
+import { Alert, Card, Descriptions, Empty, Skeleton, Tag } from 'antd'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
 
 export default function StudentProfile() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    let active = true
     resourceApi
       .get('/student/profile')
-      .then(setProfile)
-      .finally(() => setLoading(false))
+      .then((data) => {
+        if (active) setProfile(data)
+      })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError.status !== 404) setError(requestError)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   if (loading) return <Skeleton active paragraph={{ rows: 8 }} />
+
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load your profile"
+        description={error.message}
+      />
+    )
+  }
 
   if (!profile) return <Empty description="No profile data" style={{ marginTop: 60 }} />
 

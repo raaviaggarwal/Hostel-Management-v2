@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { App as AntApp, Button, Card, Col, Row, Skeleton, Space, Table, Tag, Typography } from 'antd'
+import { useCallback, useEffect, useState } from 'react'
+import { Alert, App as AntApp, Button, Card, Col, Row, Skeleton, Space, Table, Tag, Typography } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
@@ -12,15 +12,42 @@ export default function Committee() {
   const [data, setData] = useState(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
-  const load = () => resourceApi.get('/committee').then(setData)
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      setData(await resourceApi.get('/committee'))
+      setLoadError(null)
+    } catch (error) {
+      setLoadError(error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
+    let active = true
     resourceApi
       .get('/committee')
-      .then(setData)
-      .catch((error) => message.error(error.message))
-  }, [message])
+      .then((result) => {
+        if (active) {
+          setData(result)
+          setLoadError(null)
+        }
+      })
+      .catch((error) => {
+        if (active) setLoadError(error)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const handleAdd = async (values) => {
     setSaving(true)
@@ -28,7 +55,7 @@ export default function Committee() {
       await resourceApi.post('/committee/meetings', values)
       message.success('Meeting scheduled')
       setModalOpen(false)
-      load()
+      await load()
     } catch (error) {
       message.error(error.message)
     } finally {
@@ -36,7 +63,22 @@ export default function Committee() {
     }
   }
 
-  if (!data) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (loading && !data) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (!data) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load committee data"
+        description={loadError?.message || 'Committee data is unavailable.'}
+        action={
+          <Button size="small" onClick={load}>
+            Retry
+          </Button>
+        }
+      />
+    )
+  }
 
   const memberColumns = [
     { title: 'Member', dataIndex: 'name' },
@@ -45,6 +87,20 @@ export default function Committee() {
 
   return (
     <>
+      {loadError && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Unable to refresh committee data"
+          description={loadError.message}
+          action={
+            <Button size="small" onClick={load}>
+              Retry
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
       <PageHeader
         title="Committee"
         subtitle="Hostel committee members and meetings."

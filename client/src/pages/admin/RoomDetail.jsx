@@ -25,7 +25,7 @@ export default function RoomDetail() {
 
   const changeStatus = async (status) => {
     try {
-      await resourceApi.update(`/rooms/${id}/status`, status)
+      await resourceApi.put(`/rooms/${id}/status`, { status })
       message.success(`Status → ${status}`)
       reload()
     } catch (error) {

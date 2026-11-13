@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App as AntApp, Button, Card, DatePicker, Radio, Select, Space, Tag, Typography } from 'antd'
+import { Alert, App as AntApp, Button, Card, DatePicker, Radio, Select, Space, Tag, Typography } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { apiFetch, resourceApi } from '../../api/client'
@@ -19,6 +19,7 @@ export default function WardenAttendance() {
   const [blockId, setBlockId] = useState(undefined)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(null)
   const [saving, setSaving] = useState(false)
 
   const dateStr = date.format('YYYY-MM-DD')
@@ -30,11 +31,16 @@ export default function WardenAttendance() {
 
   const load = () => {
     setLoading(true)
+    setLoadError(null)
     const params = new URLSearchParams({ date: dateStr })
     if (blockId) params.set('blockId', blockId)
     resourceApi
       .get(`/warden/attendance/register?${params.toString()}`)
       .then((result) => setRecords(result.records || []))
+      .catch((error) => {
+        setRecords([])
+        setLoadError(error)
+      })
       .finally(() => setLoading(false))
   }
 
@@ -100,11 +106,32 @@ export default function WardenAttendance() {
         title="Attendance"
         subtitle="Mark daily attendance for students in your hostel."
         extra={
-          <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={save}>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={saving}
+            disabled={loading || !!loadError}
+            onClick={save}
+          >
             Save Attendance
           </Button>
         }
       />
+
+      {loadError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Unable to load attendance"
+          description={loadError.message}
+          action={
+            <Button size="small" onClick={load}>
+              Retry
+            </Button>
+          }
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>

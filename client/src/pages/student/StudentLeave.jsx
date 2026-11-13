@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { App as AntApp, Button, Card, Col, DatePicker, Form, Input, Row, Statistic, Tabs } from 'antd'
+import { Alert, App as AntApp, Button, Card, Col, DatePicker, Form, Input, Row, Statistic, Tabs } from 'antd'
 import dayjs from 'dayjs'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
@@ -23,14 +23,24 @@ export default function StudentLeave() {
   const [form] = Form.useForm()
   const [tab, setTab] = useState('all')
   const [submitting, setSubmitting] = useState(false)
-  const [quota, setQuota] = useState(12)
+  const [quota, setQuota] = useState(null)
+  const [quotaError, setQuotaError] = useState(null)
   const { data, loading, reload } = useResource('/student/leaves')
 
   useEffect(() => {
+    let active = true
     resourceApi
       .get('/settings')
-      .then((s) => setQuota(s.leaveTotal || 12))
-      .catch(() => {})
+      .then((settings) => {
+        if (active) setQuota(settings.leaveTotal ?? 12)
+      })
+      .catch((error) => {
+        if (active) setQuotaError(error)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const used = useMemo(
@@ -80,18 +90,32 @@ export default function StudentLeave() {
     <>
       <PageHeader title="Leave / Out-Pass" subtitle="Request leave and track your departures and returns." />
 
+      {quotaError && (
+        <Alert
+          type="error"
+          showIcon
+          message="Unable to load leave quota"
+          description={quotaError.message}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={8}>
           <Card size="small">
-            <Statistic title="Leaves Used" value={used} suffix={`/ ${quota}`} />
+            <Statistic title="Leaves Used" value={used} suffix={quota === null ? '' : `/ ${quota}`} />
           </Card>
         </Col>
         <Col xs={24} sm={8}>
           <Card size="small">
             <Statistic
               title="Remaining"
-              value={Math.max(0, quota - used)}
-              valueStyle={{ color: used >= quota ? '#C0392B' : '#1B8A6B' }}
+              value={quota === null ? '—' : Math.max(0, quota - used)}
+              valueStyle={
+                quota === null
+                  ? undefined
+                  : { color: used >= quota ? '#C0392B' : '#1B8A6B' }
+              }
             />
           </Card>
         </Col>

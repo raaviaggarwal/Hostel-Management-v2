@@ -97,7 +97,7 @@ describe('AuthContext', () => {
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
   })
 
-  it('beforeunload + load keeps session (refresh preserves login)', () => {
+  it('preserves the session across page unload until its expiry', () => {
     vi.useFakeTimers()
     localStorage.setItem(TOKEN_KEY, 'token-keep')
     localStorage.setItem(EXPIRY_KEY, String(Date.now() + 100000))
@@ -106,28 +106,10 @@ describe('AuthContext', () => {
 
     act(() => {
       window.dispatchEvent(new Event('beforeunload'))
-      window.dispatchEvent(new Event('load'))
-    })
-    vi.advanceTimersByTime(200)
-
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('token-keep')
-    expect(screen.getByTestId('authed')).toHaveTextContent('true')
-  })
-
-  it('beforeunload timer clears session when it fires (actual close)', () => {
-    vi.useFakeTimers()
-    localStorage.setItem(TOKEN_KEY, 'token-close')
-    localStorage.setItem(EXPIRY_KEY, String(Date.now() + 100000))
-    localStorage.setItem(USER_KEY, JSON.stringify({ id: 1, role: 'admin' }))
-    renderProbe()
-
-    act(() => {
-      window.dispatchEvent(new Event('beforeunload'))
-    })
-    act(() => {
       vi.advanceTimersByTime(150)
     })
 
-    expect(localStorage.getItem(TOKEN_KEY)).toBeNull()
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('token-keep')
+    expect(screen.getByTestId('authed')).toHaveTextContent('true')
   })
 })

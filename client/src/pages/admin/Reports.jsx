@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App as AntApp, Button, Card, Col, Row, Skeleton, Statistic, Table, Tag, Typography } from 'antd'
 import { DownloadOutlined, BugOutlined, TeamOutlined, LikeOutlined } from '@ant-design/icons'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
@@ -71,13 +71,41 @@ const EXPORTS = {
 }
 
 export default function Reports() {
+  const { message } = AntApp.useApp()
   const [report, setReport] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
-    resourceApi.get('/admin/reports').then(setReport)
+    let active = true
+    resourceApi
+      .get('/admin/reports')
+      .then((data) => {
+        if (active) setReport(data)
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
-  if (!report) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (error || !report) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load reports"
+        description={error?.message || 'Report data is unavailable.'}
+      />
+    )
+  }
 
   const occupancyColumns = [
     { title: 'Hostel', dataIndex: 'hostel' },
@@ -92,9 +120,13 @@ export default function Reports() {
   ]
 
   const download = async (kind) => {
-    const config = EXPORTS[kind]
-    const list = await resourceApi.get(config.endpoint)
-    downloadCsv(`${kind}.csv`, list, config.columns)
+    try {
+      const config = EXPORTS[kind]
+      const list = await resourceApi.get(config.endpoint)
+      downloadCsv(`${kind}.csv`, list, config.columns)
+    } catch (downloadError) {
+      message.error(downloadError.message || 'Unable to export report')
+    }
   }
 
   return (

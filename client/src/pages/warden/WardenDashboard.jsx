@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Col, Row, Skeleton, Statistic, Progress } from 'antd'
+import { Alert, Card, Col, Row, Skeleton, Statistic, Progress } from 'antd'
 import {
   TeamOutlined,
   AppstoreOutlined,
@@ -40,16 +40,37 @@ function ChartCard({ title, children, height = 260 }) {
 export default function WardenDashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    let active = true
     resourceApi
       .get('/warden/dashboard')
-      .then(setData)
-      .finally(() => setLoading(false))
+      .then((result) => {
+        if (active) setData(result)
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
-  if (loading || !data) {
-    return <Skeleton active paragraph={{ rows: 12 }} />
+  if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
+  if (error || !data) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load the dashboard"
+        description={error?.message || 'Dashboard data is unavailable.'}
+      />
+    )
   }
 
   const s = data.stats

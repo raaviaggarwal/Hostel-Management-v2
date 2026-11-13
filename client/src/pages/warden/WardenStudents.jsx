@@ -87,7 +87,7 @@ export default function WardenStudents() {
     setSaving(true)
 
     try {
-      await resourceApi.update(`/students/${assigning.id}/room`, {
+      await resourceApi.put(`/students/${assigning.id}/room`, {
         roomno: room.roomNo,
         blockId: room.blockId,
         hostelId: blocks.find((b) => b.id === room.blockId)?.hostelId,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Col, Empty, Row, Skeleton, Statistic, Tag, Typography } from 'antd'
+import { Alert, Card, Col, Empty, Row, Skeleton, Statistic, Tag, Typography } from 'antd'
 import {
   BugOutlined,
   CalendarOutlined,
@@ -16,16 +16,41 @@ export default function StudentDashboard() {
   const navigate = useNavigate()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
+    let active = true
     resourceApi
       .get('/student/dashboard')
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false))
+      .then((result) => {
+        if (active) setData(result)
+      })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError.status === 404) setData(null)
+        else setError(requestError)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
+
+  if (error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load the dashboard"
+        description={error.message}
+      />
+    )
+  }
 
   if (!data) {
     return (

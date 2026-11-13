@@ -1,4 +1,4 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest'
 import request from 'supertest'
 import jwt from 'jsonwebtoken'
 import fs from 'node:fs'
@@ -868,13 +868,29 @@ describe('server hardening', () => {
   const distIndex = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../client/dist/index.html')
 
   it('returns 500 JSON for unhandled async errors instead of hanging', async () => {
-    const res = await request(app)
-      .post('/api/students')
-      .set('Content-Type', 'application/json')
-      .set(auth('admin', 1))
-      .send({})
-    expect(res.status).toBe(500)
-    expect(res.body.message).toBe('Internal server error')
+    const internalError = new Error('test-only internal failure detail')
+    const createSpy = vi.spyOn(prisma.student, 'create').mockRejectedValueOnce(internalError)
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      const res = await request(app)
+        .post('/api/students')
+        .set('Content-Type', 'application/json')
+        .set(auth('admin', 1))
+        .send({ regNo: 'TEST-ASYNC-ERROR', name: 'Async Error Test' })
+        .timeout({ response: 5000 })
+
+      expect(createSpy).toHaveBeenCalledOnce()
+      expect(res.status).toBe(500)
+      expect(res.headers['content-type']).toMatch(/application\/json/)
+      expect(res.body).toEqual({ message: 'Internal server error' })
+      expect(res.text).not.toContain(internalError.message)
+      expect(res.text).not.toMatch(/stack|Error:/i)
+      expect(errorLog).toHaveBeenCalledWith('Server error:', internalError.message)
+    } finally {
+      createSpy.mockRestore()
+      errorLog.mockRestore()
+    }
   })
 
   it('returns 404 JSON for unknown API routes', async () => {

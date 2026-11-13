@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { App as AntApp, Alert, Button, Card, Form, Radio, Result, Select, Space, Typography } from 'antd'
+import { App as AntApp, Alert, Button, Card, Form, Radio, Result, Select, Skeleton, Space, Typography } from 'antd'
 import { useNavigate } from 'react-router-dom'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
@@ -12,12 +12,29 @@ export default function AllocationApply() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [form] = Form.useForm()
-  const { data: hostels } = useResource('/hostels')
-  const { data: students } = useResource('/students')
-  const { data: allocations, reload } = useResource('/student/allocation')
+  const {
+    data: hostels,
+    loading: hostelsLoading,
+    error: hostelsError,
+    reload: reloadHostels,
+  } = useResource('/hostels')
+  const {
+    data: students,
+    loading: studentsLoading,
+    error: studentsError,
+    reload: reloadStudents,
+  } = useResource('/students')
+  const {
+    data: allocations,
+    loading: allocationsLoading,
+    error: allocationsError,
+    reload: reloadAllocations,
+  } = useResource('/student/allocation')
 
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(null)
+  const loading = hostelsLoading || studentsLoading || allocationsLoading
+  const loadError = hostelsError || studentsError || allocationsError
 
   const me = useMemo(
     () => students.find((s) => s.regNo === user?.regNo),
@@ -68,6 +85,43 @@ export default function AllocationApply() {
           </Button>
         }
       />
+    )
+  }
+
+  if (loading) {
+    return (
+      <>
+        <PageHeader title="Apply for Hostel" subtitle="Hostel allocation application." />
+        <Card>
+          <Skeleton active paragraph={{ rows: 5 }} />
+        </Card>
+      </>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <>
+        <PageHeader title="Apply for Hostel" subtitle="Hostel allocation application." />
+        <Alert
+          type="error"
+          showIcon
+          message="Unable to load application details"
+          description={loadError.message}
+          action={
+            <Button
+              size="small"
+              onClick={() => {
+                reloadHostels()
+                reloadStudents()
+                reloadAllocations()
+              }}
+            >
+              Retry
+            </Button>
+          }
+        />
+      </>
     )
   }
 
@@ -139,7 +193,7 @@ export default function AllocationApply() {
               <Radio.Button value="single">Single</Radio.Button>
               <Radio.Button value="double">Double</Radio.Button>
               <Radio.Button value="triple">Triple</Radio.Button>
-              <Radio.Button value={null}>No preference</Radio.Button>
+              <Radio.Button value="">No preference</Radio.Button>
             </Radio.Group>
           </Form.Item>
 

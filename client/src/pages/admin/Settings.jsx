@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { App as AntApp, Button, Card, Descriptions, Form, Input, Skeleton, Space, Tabs } from 'antd'
+import { Alert, App as AntApp, Button, Card, Descriptions, Form, Input, Skeleton, Tabs } from 'antd'
 import { SaveOutlined } from '@ant-design/icons'
 import { resourceApi, apiFetch } from '../../api/client'
 import { useAuth } from '../../context/auth'
@@ -9,18 +9,41 @@ export default function Settings() {
   const { message } = AntApp.useApp()
   const { user } = useAuth()
   const [form] = Form.useForm()
-  const [securityForm] = Form.useForm()
   const [settings, setSettings] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    resourceApi.get('/settings').then((data) => {
-      setSettings(data)
-      form.setFieldsValue(data)
-    })
-  }, [form])
+    let active = true
+    resourceApi
+      .get('/settings')
+      .then((data) => {
+        if (active) setSettings(data)
+      })
+      .catch((error) => {
+        if (active) setLoadError(error)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
 
-  if (!settings) return <Skeleton active paragraph={{ rows: 8 }} />
+    return () => {
+      active = false
+    }
+  }, [])
+
+  if (loading) return <Skeleton active paragraph={{ rows: 8 }} />
+  if (loadError || !settings) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="Unable to load settings"
+        description={loadError?.message || 'Settings data is unavailable.'}
+      />
+    )
+  }
 
   const saveGeneral = async (values) => {
     setSaving(true)
@@ -38,14 +61,15 @@ export default function Settings() {
     }
   }
 
-  const saveSecurity = () => {
-    message.success('Password updated (mocked — backend will persist this)')
-    securityForm.resetFields()
-  }
-
   const generalTab = (
     <Card title="Hostel Settings">
-      <Form form={form} layout="vertical" onFinish={saveGeneral} style={{ maxWidth: 520 }}>
+      <Form
+        form={form}
+        initialValues={settings}
+        layout="vertical"
+        onFinish={saveGeneral}
+        style={{ maxWidth: 520 }}
+      >
         <Form.Item name="hostelName" label="Hostel Name" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
@@ -78,40 +102,12 @@ export default function Settings() {
 
   const securityTab = (
     <Card title="Change Password">
-      <Form
-        form={securityForm}
-        layout="vertical"
-        onFinish={saveSecurity}
-        style={{ maxWidth: 420 }}
-      >
-        <Form.Item name="current" label="Current Password" rules={[{ required: true }]}>
-          <Input.Password />
-        </Form.Item>
-        <Form.Item name="next" label="New Password" rules={[{ required: true, min: 6 }]}>
-          <Input.Password />
-        </Form.Item>
-        <Form.Item
-          name="confirm"
-          label="Confirm New Password"
-          dependencies={['next']}
-          rules={[
-            { required: true },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('next') === value) return Promise.resolve()
-                return Promise.reject(new Error('Passwords do not match'))
-              },
-            }),
-          ]}
-        >
-          <Input.Password />
-        </Form.Item>
-        <Space>
-          <Button type="primary" htmlType="submit" icon={<SaveOutlined />}>
-            Update Password
-          </Button>
-        </Space>
-      </Form>
+      <Alert
+        type="warning"
+        showIcon
+        message="Password changes are unavailable"
+        description="The API does not currently support changing passwords."
+      />
     </Card>
   )
 

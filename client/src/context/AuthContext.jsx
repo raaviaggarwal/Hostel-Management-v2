@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   AuthContext,
   TOKEN_KEY,
@@ -26,8 +26,6 @@ export function AuthProvider({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_KEY) !== 'false'
   )
-  const closeTimerRef = useRef(null)
-
   const clearSession = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(EXPIRY_KEY)
@@ -66,30 +64,6 @@ export function AuthProvider({ children }) {
     check()
     const interval = setInterval(check, 60 * 1000)
     return () => clearInterval(interval)
-  }, [clearSession])
-
-  // beforeunload: schedule cleanup 100ms later. On a refresh the new document
-  // loads quickly and clears the timer, so the session survives. On an actual
-  // close the timer executes and clears the session.
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      closeTimerRef.current = setTimeout(() => {
-        clearSession()
-      }, 100)
-    }
-    const handleLoad = () => {
-      if (closeTimerRef.current) {
-        clearTimeout(closeTimerRef.current)
-        closeTimerRef.current = null
-      }
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    window.addEventListener('load', handleLoad)
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      window.removeEventListener('load', handleLoad)
-      if (closeTimerRef.current) clearTimeout(closeTimerRef.current)
-    }
   }, [clearSession])
 
   const value = useMemo(

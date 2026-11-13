@@ -1,8 +1,10 @@
+import { TOKEN_KEY } from '../context/auth'
+
 let API_BASE = import.meta.env.VITE_API_URL || '/api'
 if (!API_BASE.endsWith('/api')) API_BASE += '/api'
 
 function readToken() {
-  return localStorage.getItem('token')
+  return localStorage.getItem(TOKEN_KEY)
 }
 
 export async function apiFetch(path, options = {}) {

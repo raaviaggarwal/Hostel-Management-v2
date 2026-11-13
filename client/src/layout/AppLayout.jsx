@@ -1,9 +1,7 @@
-import { Suspense, useEffect } from 'react'
+import { Suspense } from 'react'
 import { Layout, Drawer, Grid, Skeleton, theme } from 'antd'
 import { Outlet } from 'react-router-dom'
 import { useAuth } from '../context/auth'
-import { useNotifications } from '../context/notifications'
-import { resourceApi } from '../api/client'
 import Navbar from '../components/Navbar'
 import SidebarMenu from '../components/SidebarMenu'
 import Brand from '../components/Brand'
@@ -14,20 +12,10 @@ const SIDEBAR_WIDTH = 256
 
 export default function AppLayout({ role }) {
   const { sidebarOpen, toggleSidebar } = useAuth()
-  const { setNotifications } = useNotifications()
   const screens = Grid.useBreakpoint()
   const { token } = theme.useToken()
 
   const isMobile = screens.lg === false
-
-  useEffect(() => {
-    resourceApi
-      .get('/notifications')
-      .then((data) => setNotifications(data))
-      .catch(() => {
-        // notifications are optional during the mock phase
-      })
-  }, [setNotifications])
 
   const menu = <SidebarMenu role={role} onNavigate={isMobile ? toggleSidebar : undefined} />
 
