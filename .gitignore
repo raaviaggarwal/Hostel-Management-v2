@@ -1,3 +1,9 @@
 # Local PostgreSQL data directory (docker-compose volume)
-/data/
-/docs/*
+/database/data/
+
+# Generated dependencies and builds
+node_modules/
+dist/
+
+# Runtime logs
+*.log
