@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Card, Descriptions, Empty, Space, Steps, Timeline, Typography } from 'antd'
+import { Alert, Button, Card, Descriptions, Empty, Space, Steps, Timeline, Typography } from 'antd'
 import { useResource } from '../../hooks/useResource'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
@@ -8,7 +8,15 @@ import StatusTag from '../../components/StatusTag'
 const STATUS_ORDER = ['applied', 'under_review', 'approved', 'waitlisted', 'allocated', 'occupied']
 
 export default function MyAllocation() {
-  const { data, loading } = useResource('/student/allocation')
+  const {
+    data,
+    loading,
+    error,
+    reload,
+  } = useResource('/student/allocation', {
+    refreshIntervalMs: 30000,
+    refreshOnFocus: true,
+  })
   const { data: hostels } = useResource('/hostels')
 
   const hostelName = (id) => hostels.find((h) => h.id === id)?.name || '-'
@@ -44,6 +52,17 @@ export default function MyAllocation() {
   return (
     <>
       <PageHeader title="My Allocation" subtitle="Track your hostel allocation applications." />
+
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message="Unable to refresh your allocation status"
+          description={error.message || 'The latest application status could not be loaded.'}
+          action={<Button size="small" onClick={reload}>Retry</Button>}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <Card title="Current Application" loading={loading}>
         {!latest ? (

@@ -234,7 +234,7 @@ describe('Security Hardening - Integration Tests', () => {
       const response = await request(app)
         .post('/api/students')
         .set(auth(admin))
-        .send({ regNo: 'NEW-REG', name: 'New Student', password: 'abc' })
+        .send({ regNo: 'NEW-REG', name: 'New Student', password: 'abc', emailid: 'new@student.test' })
 
       expect(response.status).toBe(400)
       expect(response.body.message).toContain('at least 6')
@@ -244,7 +244,7 @@ describe('Security Hardening - Integration Tests', () => {
       const response = await request(app)
         .post('/api/students')
         .set(auth(admin))
-        .send({ regNo: 'NEW-REG', name: 'New Student', password: 123 })
+        .send({ regNo: 'NEW-REG', name: 'New Student', password: 123, emailid: 'new@student.test' })
 
       expect(response.status).toBe(400)
       expect(response.body.message).toContain('at least 6')

@@ -41,7 +41,7 @@ export default function Allocations() {
   const [tab, setTab] = useState('all')
   const [hostelFilter, setHostelFilter] = useState('all')
   const { data, loading, reload } = useResource('/allocations')
-  const { data: rooms } = useResource('/rooms')
+  const { data: rooms, reload: reloadRooms } = useResource('/rooms')
   const { data: blocks } = useResource('/blocks')
   const { data: hostels } = useResource('/hostels')
 
@@ -70,7 +70,7 @@ export default function Allocations() {
             (r.status === 'available' || r.status === 'partially_occupied')
         )
         .map((r) => ({
-          label: `${r.roomNo} — ${hostels.find((h) => h.id === r.hostelId)?.code || r.hostelId} (${r.occupants}/${r.seater} in)`,
+          label: `${r.roomNo} — ${hostels.find((h) => h.id === r.hostelId)?.code || r.hostelId} (${r.occupied}/${r.seater} in)`,
           value: r.id,
         })),
     [rooms, blockIds, hostels]
@@ -96,6 +96,7 @@ export default function Allocations() {
       await fn()
       message.success(success)
       reload()
+      reloadRooms()
     } catch (error) {
       message.error(error.message)
     } finally {

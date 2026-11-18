@@ -351,21 +351,31 @@ async function allocateRoomTx(tx, allocation, room, actorName, student) {
 }
 
 async function doAllocate(allocation, room, actorName, meta = {}) {
-  const student = await prisma.student.findUnique({ where: { id: allocation.studentId } })
-
   const result = await withRetry(() =>
     prisma.$transaction(async (tx) => {
       const lockedRoom = await tx.$queryRaw`SELECT * FROM "Room" WHERE id = ${room.id} FOR UPDATE`
       if (!lockedRoom.length) throw new Error('Room not found')
       const roomData = lockedRoom[0]
       if (roomData.medicalReserved) throw new Error('Room is medical reserved')
-      return allocateRoomTx(tx, allocation, roomData, actorName, student)
+      if (!['available', 'partially_occupied'].includes(roomData.status)) {
+        throw new Error('Room is not available')
+      }
+
+      const currentAllocation = await tx.allocation.findUnique({ where: { id: allocation.id } })
+      if (!currentAllocation || !['approved', 'waitlisted'].includes(currentAllocation.status)) {
+        throw new Error('Allocation is no longer available')
+      }
+      const student = await tx.student.findUnique({ where: { id: currentAllocation.studentId } })
+      if (!student) throw new Error('Student not found')
+
+      const updated = await allocateRoomTx(tx, currentAllocation, roomData, actorName, student)
+      return { allocation: updated, student }
     }, { isolationLevel: 'Serializable' })
   )
 
-  await logAudit(actorName, 'Allocated room', 'Allocation', student.name, 'Approved', 'Allocated', meta)
-  await addNotification('Room allocated', `${student.name} allotted room ${room.roomNo}.`, { category: 'success' })
-  return result
+  await logAudit(actorName, 'Allocated room', 'Allocation', result.student.name, 'Approved', 'Allocated', meta)
+  await addNotification('Room allocated', `${result.student.name} allotted room ${room.roomNo}.`, { category: 'success' })
+  return result.allocation
 }
 
 async function addNotification(title, description, opts = {}) {
@@ -552,12 +562,17 @@ router.get('/admin/dashboard', async (req, res) => {
   const [hostels, rooms, housed, allocations, complaints, leaves] = await Promise.all([
     prisma.hostel.findMany({ orderBy: { id: 'asc' } }),
     prisma.room.findMany(),
-    prisma.student.findMany({ where: { active: true } }),
+    prisma.student.findMany({
+      where: { roomId: { not: null } },
+      select: { gender: true, roomId: true },
+    }),
     prisma.allocation.findMany(),
     prisma.complaint.findMany(),
     prisma.leave.findMany(),
   ])
   const occ = await roomOccupancyMap()
+  const roomIds = new Set(rooms.map((room) => room.id))
+  const occupiedStudents = housed.filter((student) => roomIds.has(student.roomId))
   const totalCapacity = hostels.reduce((sum, h) => sum + h.seats, 0)
   const hostelList = hostels.map((hostel) => {
     const hostelRooms = rooms.filter((r) => r.hostelId === hostel.id)
@@ -577,7 +592,7 @@ router.get('/admin/dashboard', async (req, res) => {
       occupancyPct: hostel.seats ? Math.round((occupied / hostel.seats) * 100) : 0,
     }
   })
-  const occupiedBeds = housed.length
+  const occupiedBeds = occupiedStudents.length
   return ok(res, {
     stats: {
       totalHostels: hostels.length,
@@ -587,8 +602,8 @@ router.get('/admin/dashboard', async (req, res) => {
       occupiedBeds,
       availableBeds: Math.max(0, totalCapacity - occupiedBeds),
       occupancyPct: totalCapacity ? Math.round((occupiedBeds / totalCapacity) * 100) : 0,
-      boysBeds: housed.filter((s) => s.gender === 'male').length,
-      girlsBeds: housed.filter((s) => s.gender === 'female').length,
+      boysBeds: occupiedStudents.filter((s) => s.gender === 'male').length,
+      girlsBeds: occupiedStudents.filter((s) => s.gender === 'female').length,
       pendingAllocations: allocations.filter((a) => ['applied', 'under_review', 'approved'].includes(a.status)).length,
       waitlisted: allocations.filter((a) => a.status === 'waitlisted').length,
       openComplaints: complaints.filter((c) => !c.complaintStatus || c.complaintStatus === 'In Process').length,
@@ -851,17 +866,21 @@ router.delete('/blocks/:id', async (req, res) => {
 
 // ---- Rooms ----
 router.get('/rooms', async (req, res) => {
-  const user = await getUser(req)
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const hostelId = req.query.hostelId
   const status = req.query.status
   const type = req.query.type
   const search = String(req.query.search || '').toLowerCase()
 
   let where = {}
-  if (hostelId && hostelId !== 'all') {
-    where.hostelId = num(hostelId)
-  } else if (user && WARDEN_ROLES.includes(user.role) && user.hostelId) {
+  if (WARDEN_ROLES.includes(user.role) && !(user.role === 'chief_warden' && !user.hostelId)) {
+    if (hostelId && hostelId !== 'all' && num(hostelId) !== user.hostelId) {
+      return fail(res, 'Rooms are outside your authorized hostel', 403)
+    }
     where.hostelId = user.hostelId
+  } else if (hostelId && hostelId !== 'all') {
+    where.hostelId = num(hostelId)
   }
 
   let rooms = await prisma.room.findMany({
@@ -883,11 +902,9 @@ router.get('/rooms', async (req, res) => {
 })
 
 router.get('/rooms/:id', async (req, res) => {
-  const user = await getUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
-
   const STUDENT_READ_ROLES = ['admin', 'student', 'mess_manager', 'security', ...WARDEN_ROLES]
-  if (!STUDENT_READ_ROLES.includes(user.role)) return fail(res, 'Forbidden', 403)
+  const user = await requestUser(req, res, STUDENT_READ_ROLES)
+  if (!user) return
 
   const room = await prisma.room.findUnique({ where: { id: num(req.params.id) } })
   if (!room) return fail(res, 'Room not found', 404)
@@ -972,20 +989,42 @@ router.put('/rooms/:id', async (req, res) => {
 
 router.delete('/rooms/:id', async (req, res) => {
   if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
-  await prisma.room.deleteMany({ where: { id: num(req.params.id) } })
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      const roomId = num(req.params.id)
+      const locked = await tx.$queryRaw`SELECT id FROM "Room" WHERE id = ${roomId} FOR UPDATE`
+      if (!locked.length) return false
+
+      const [occupants, inventoryItems] = await Promise.all([
+        tx.student.count({ where: { roomId } }),
+        tx.inventoryItem.count({ where: { roomId } }),
+      ])
+      if (occupants || inventoryItems) throw new Error('ROOM_HAS_DEPENDENT_RECORDS')
+
+      await tx.room.delete({ where: { id: roomId } })
+      return true
+    }, { isolationLevel: 'Serializable' })
+    if (!deleted) return fail(res, 'Room not found', 404)
+  } catch (error) {
+    if (error?.message === 'ROOM_HAS_DEPENDENT_RECORDS') {
+      return fail(res, 'Room has occupants or inventory and cannot be deleted', 409)
+    }
+    throw error
+  }
   return ok(res, { ok: true })
 })
 
 router.put('/rooms/:id/status', async (req, res) => {
+  if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
+  const validStatuses = ['available', 'partially_occupied', 'full', 'maintenance', 'medical_reserved', 'cleaning', 'blocked']
+  const status = req.body?.status
+  if (!validStatuses.includes(status)) return fail(res, 'Invalid room status', 400)
+
   const room = await prisma.room.findUnique({ where: { id: num(req.params.id) } })
   if (!room) return fail(res, 'Room not found', 404)
-  const body = req.body || {}
-  let medicalReserved = room.medicalReserved
-  if (body.status === 'medical_reserved') medicalReserved = true
-  if (body.status === 'available') medicalReserved = false
   const updated = await prisma.room.update({
     where: { id: room.id },
-    data: { status: body.status, medicalReserved },
+    data: { status, medicalReserved: status === 'medical_reserved' },
   })
   return ok(res, updated)
 })
@@ -994,21 +1033,21 @@ router.put('/rooms/:id/status', async (req, res) => {
 const STUDENT_READ_ROLES = ['admin', 'student', 'mess_manager', 'security', ...WARDEN_ROLES]
 
 router.get('/students', async (req, res) => {
-  const user = await getUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
-  if (!STUDENT_READ_ROLES.includes(user.role)) return fail(res, 'Forbidden', 403)
-  const pwCheck = requirePasswordChange(req, res)
-  if (pwCheck) return fail(res, pwCheck.error, pwCheck.status, { code: pwCheck.code })
+  const user = await requestUser(req, res, STUDENT_READ_ROLES)
+  if (!user) return
 
   const search = String(req.query.search || '').toLowerCase()
   const filters = []
   if (search) {
+    const searchableFields = ['security', 'mess_manager'].includes(user.role)
+      ? [{ name: { contains: search, mode: 'insensitive' } }, { regNo: { contains: search } }]
+      : [
+          { name: { contains: search, mode: 'insensitive' } },
+          { regNo: { contains: search } },
+          { emailid: { contains: search, mode: 'insensitive' } },
+        ]
     filters.push({
-      OR: [
-        { name: { contains: search, mode: 'insensitive' } },
-        { regNo: { contains: search } },
-        { emailid: { contains: search, mode: 'insensitive' } },
-      ],
+      OR: searchableFields,
     })
   }
   if (WARDEN_ROLES.includes(user.role) && user.hostelId) {
@@ -1019,9 +1058,11 @@ router.get('/students', async (req, res) => {
     filters.push({ regNo: user.regNo })
   }
 
+  const summaryOnly = ['security', 'mess_manager'].includes(user.role)
   const students = await prisma.student.findMany({
     where: filters.length > 1 ? { AND: filters } : filters[0],
     orderBy: { id: 'asc' },
+    ...(summaryOnly ? { select: { id: true, name: true, roomno: true } } : {}),
   })
   const list = []
   for (const s of students) {
@@ -1032,11 +1073,14 @@ router.get('/students', async (req, res) => {
 })
 
 router.get('/students/:id', async (req, res) => {
-  const user = await getUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
-  if (!STUDENT_READ_ROLES.includes(user.role)) return fail(res, 'Forbidden', 403)
+  const user = await requestUser(req, res, STUDENT_READ_ROLES)
+  if (!user) return
 
-  const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
+  const summaryOnly = ['security', 'mess_manager'].includes(user.role)
+  const student = await prisma.student.findUnique({
+    where: { id: num(req.params.id) },
+    ...(summaryOnly ? { select: { id: true, name: true, roomno: true } } : {}),
+  })
   if (!student) return fail(res, 'Student not found', 404)
   if (WARDEN_ROLES.includes(user.role) && user.hostelId && student.hostelId !== user.hostelId) {
     return fail(res, 'Student is outside your authorized hostel', 403)
@@ -1048,18 +1092,14 @@ router.get('/students/:id', async (req, res) => {
 })
 
 const STUDENT_FIELDS = [
-  'regNo', 'name', 'gender', 'year', 'course', 'cgpa', 'contactno', 'emailid',
-  'roomId', 'hostelId', 'blockId', 'roomno', 'seater',
+  'name', 'gender', 'year', 'course', 'cgpa', 'contactno', 'emailid',
   'leaveUsed', 'stayfrom', 'guardianName', 'guardianRelation', 'guardianContactno', 'active',
 ]
 
 router.post('/students', async (req, res) => {
-  const user = await getUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const isAdmin = user.role === 'admin'
-  if (!isAdmin && !WARDEN_ROLES.includes(user.role)) {
-    return fail(res, 'Forbidden', 403)
-  }
   if (!isAdmin && !user.hostelId) {
     return fail(res, 'Warden must be assigned to a hostel', 403)
   }
@@ -1068,11 +1108,31 @@ router.post('/students', async (req, res) => {
   if (!body.regNo || !body.name) {
     return fail(res, 'Registration number and name are required', 400)
   }
+  if (typeof body.emailid !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.emailid.trim())) {
+    return fail(res, 'A valid email address is required', 400)
+  }
   if (!body.password) {
     return fail(res, 'Password is required for student account', 400)
   }
   if (typeof body.password !== 'string' || body.password.length < 6) {
     return fail(res, 'Password must be at least 6 characters', 400)
+  }
+
+  const emailid = body.emailid.trim()
+  let studentHostelId = isAdmin ? null : user.hostelId
+  let studentBlockId = null
+  if (isAdmin && body.hostelId) {
+    const hostel = await prisma.hostel.findUnique({ where: { id: num(body.hostelId) } })
+    if (!hostel) return fail(res, 'Hostel not found', 400)
+    studentHostelId = hostel.id
+  }
+  if (isAdmin && body.blockId) {
+    const block = await prisma.block.findUnique({ where: { id: num(body.blockId) } })
+    if (!block) return fail(res, 'Block not found', 400)
+    if (!studentHostelId || block.hostelId !== studentHostelId) {
+      return fail(res, 'Block does not belong to the selected hostel', 400)
+    }
+    studentBlockId = block.id
   }
 
   let student, userAccount
@@ -1082,8 +1142,8 @@ router.post('/students', async (req, res) => {
       if (existingUser) {
         throw new Error('REGNO_EXISTS_AS_USERNAME')
       }
-      if (body.emailid) {
-        const existingEmail = await tx.user.findUnique({ where: { email: body.emailid } })
+      if (emailid) {
+        const existingEmail = await tx.user.findUnique({ where: { email: emailid } })
         if (existingEmail) {
           throw new Error('EMAIL_EXISTS')
         }
@@ -1098,8 +1158,9 @@ router.post('/students', async (req, res) => {
           course: body.course,
           cgpa: num(body.cgpa || 0),
           contactno: body.contactno || '',
-          emailid: body.emailid || '',
-          ...(isAdmin ? {} : { hostelId: user.hostelId }),
+          emailid,
+          ...(studentHostelId ? { hostelId: studentHostelId } : {}),
+          ...(studentBlockId ? { blockId: studentBlockId } : {}),
           guardianName: body.guardianName || '',
           guardianRelation: body.guardianRelation || '',
           guardianContactno: body.guardianContactno || '',
@@ -1111,12 +1172,12 @@ router.post('/students', async (req, res) => {
         data: {
           name: body.name,
           username: body.regNo,
-          email: body.emailid,
+          email: emailid,
           password: bcrypt.hashSync(body.password, BCRYPT_ROUNDS),
           role: 'student',
           regNo: body.regNo,
-          hostelId: isAdmin ? (body.hostelId ? num(body.hostelId) : null) : user.hostelId,
-          blockId: isAdmin ? (body.blockId ? num(body.blockId) : null) : user.blockId,
+          hostelId: studentHostelId,
+          blockId: studentBlockId || (isAdmin ? null : user.blockId),
         },
       })
 
@@ -1147,31 +1208,64 @@ router.put('/students/:id', async (req, res) => {
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
   if (!student) return fail(res, 'Student not found', 404)
   const body = req.body || {}
-  const updated = await prisma.student.update({
-    where: { id: student.id },
-    data: pick(body, STUDENT_FIELDS),
-  })
-  return ok(res, updated)
+  const studentData = pick(body, STUDENT_FIELDS)
+  const userData = {}
+  if (body.name !== undefined) userData.name = body.name
+  if (body.emailid !== undefined) userData.email = body.emailid
+
+  try {
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.student.update({
+        where: { id: student.id },
+        data: studentData,
+      })
+      if (Object.keys(userData).length) {
+        await tx.user.updateMany({
+          where: { role: 'student', regNo: student.regNo },
+          data: userData,
+        })
+      }
+      return result
+    })
+    return ok(res, updated)
+  } catch (error) {
+    if (error?.code === 'P2002' && error?.meta?.target?.includes('email')) {
+      return fail(res, 'Email address already in use', 409)
+    }
+    throw error
+  }
 })
 
 router.delete('/students/:id', async (req, res) => {
   const user = await getUser(req)
   if (!user) return fail(res, 'Unauthorized', 401)
   if (user.role !== 'admin') return fail(res, 'Forbidden', 403)
-  await prisma.student.deleteMany({ where: { id: num(req.params.id) } })
+
+  try {
+    const deleted = await prisma.$transaction(async (tx) => {
+      const student = await tx.student.findUnique({
+        where: { id: num(req.params.id) },
+        select: { id: true, regNo: true },
+      })
+      if (!student) return false
+      await tx.student.delete({ where: { id: student.id } })
+      await tx.user.deleteMany({ where: { role: 'student', regNo: student.regNo } })
+      return true
+    })
+    if (!deleted) return fail(res, 'Student not found', 404)
+  } catch (error) {
+    if (error?.code === 'P2003') {
+      return fail(res, 'Student has dependent records and cannot be deleted', 409)
+    }
+    throw error
+  }
   return ok(res, { ok: true })
 })
 
 router.put('/students/:id/room', async (req, res) => {
-  const user = await getUser(req)
-  if (!user) return fail(res, 'Unauthorized', 401)
+  const user = await requestUser(req, res, ['admin', ...WARDEN_ROLES])
+  if (!user) return
   const isAdmin = user.role === 'admin'
-  if (!isAdmin && !WARDEN_ROLES.includes(user.role)) {
-    return fail(res, 'Forbidden', 403)
-  }
-  if (!isAdmin && !user.hostelId) {
-    return fail(res, 'Warden must be assigned to a hostel', 403)
-  }
 
   const student = await prisma.student.findUnique({ where: { id: num(req.params.id) } })
   if (!student) return fail(res, 'Student not found', 404)
@@ -1190,51 +1284,110 @@ router.put('/students/:id/room', async (req, res) => {
       },
     })
   }
-  if (!isAdmin && room && room.hostelId !== user.hostelId) {
+  if ((body.roomId || body.roomno) && !room) return fail(res, 'Room not found', 404)
+  if (!isAdmin && room?.hostelId !== user.hostelId) {
     return fail(res, 'Room is outside your authorized hostel', 403)
   }
-  if (!isAdmin && !room) return fail(res, 'Room not found', 404)
 
-  if (room) {
-    const occ = await roomOccupancyMap()
-    const previous = student.roomId
-      ? await prisma.room.findUnique({ where: { id: student.roomId } })
-      : null
-    if (previous) {
-      const prevOcc = (occ.get(previous.id) || []).filter((s) => s.id !== student.id)
-      if (prevOcc.length === 0 && !previous.medicalReserved && previous.status !== 'maintenance' && previous.status !== 'blocked' && previous.status !== 'cleaning') {
-        await prisma.room.update({
-          where: { id: previous.id },
-          data: { status: 'available' },
-        })
-      }
-    }
-    const roomOcc = occ.get(room.id) || []
-    await prisma.room.update({
-      where: { id: room.id },
-      data: { status: roomOcc.length + 1 >= room.seater ? 'full' : 'partially_occupied' },
-    })
-    await prisma.student.update({
-      where: { id: student.id },
-      data: {
-        roomId: room.id,
-        hostelId: room.hostelId,
-        blockId: room.blockId,
-        roomno: room.roomNo,
-        seater: room.seater,
-        active: true,
-      },
-    })
-    await logAudit(req.user?.name || 'Warden', 'Assigned room', 'Student', student.name, previous?.roomNo || '-', room.roomNo, auditMeta(req))
-  } else {
-    const data = {}
-    if (body.roomno) data.roomno = body.roomno
-    if (body.blockId) data.blockId = num(body.blockId)
-    if (body.hostelId) data.hostelId = num(body.hostelId)
-    if (Object.keys(data).length) await prisma.student.update({ where: { id: student.id }, data })
+  if (!room) {
+    return fail(res, 'A room is required for assignment', 400)
   }
-  await addNotification('Room changed', `${student.name} moved to room ${student.roomno}.`)
-  const updatedStudent = await prisma.student.findUnique({ where: { id: student.id } })
+
+  const block = await prisma.block.findUnique({
+    where: { id: room.blockId },
+    select: { id: true, hostelId: true },
+  })
+  if (!block || block.hostelId !== room.hostelId) {
+    return fail(res, 'Room has an invalid hostel/block relationship', 409)
+  }
+  if (!(await eligibleHostels(student)).some((hostel) => hostel.id === room.hostelId)) {
+    return fail(res, 'Student is not eligible for the selected hostel', 400)
+  }
+  if (student.roomId === room.id) return ok(res, student)
+
+  let updatedStudent
+  try {
+    updatedStudent = await withRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const txStudent = await tx.student.findUnique({ where: { id: student.id } })
+        if (!txStudent) throw new Error('STUDENT_NOT_FOUND')
+
+        const roomIds = [...new Set([txStudent.roomId, room.id].filter(Number.isInteger))].sort((a, b) => a - b)
+        const lockedRooms = new Map()
+        for (const roomId of roomIds) {
+          const locked = await tx.$queryRaw`SELECT * FROM "Room" WHERE id = ${roomId} FOR UPDATE`
+          if (locked.length) lockedRooms.set(roomId, locked[0])
+        }
+
+        const destination = lockedRooms.get(room.id)
+        if (!destination) throw new Error('ROOM_NOT_FOUND')
+        if (destination.medicalReserved || !['available', 'partially_occupied'].includes(destination.status)) {
+          throw new Error('ROOM_UNAVAILABLE')
+        }
+
+        const activeAllocation = await tx.allocation.findFirst({
+          where: { studentId: txStudent.id, status: { notIn: ['rejected', 'cancelled'] } },
+        })
+        if (activeAllocation) throw new Error('ACTIVE_ALLOCATION_EXISTS')
+
+        const destinationOccupants = await tx.student.count({
+          where: { roomId: destination.id, id: { not: txStudent.id } },
+        })
+        if (destinationOccupants >= destination.seater) throw new Error('ROOM_FULL')
+
+        const source = txStudent.roomId ? lockedRooms.get(txStudent.roomId) : null
+        if (source && source.id !== destination.id) {
+          const sourceOccupants = await tx.student.count({
+            where: { roomId: source.id, id: { not: txStudent.id } },
+          })
+          if (!source.medicalReserved && !['maintenance', 'blocked', 'cleaning'].includes(source.status)) {
+            const sourceStatus = sourceOccupants === 0
+              ? 'available'
+              : sourceOccupants >= source.seater
+                ? 'full'
+                : 'partially_occupied'
+            await tx.room.update({ where: { id: source.id }, data: { status: sourceStatus } })
+          }
+        }
+
+        const destinationStatus = destinationOccupants + 1 >= destination.seater
+          ? 'full'
+          : 'partially_occupied'
+        await tx.room.update({
+          where: { id: destination.id },
+          data: { status: destinationStatus },
+        })
+        const updated = await tx.student.update({
+          where: { id: txStudent.id },
+          data: {
+            roomId: destination.id,
+            hostelId: destination.hostelId,
+            blockId: destination.blockId,
+            roomno: destination.roomNo,
+            seater: destination.seater,
+            active: true,
+          },
+        })
+        await tx.user.updateMany({
+          where: { role: 'student', regNo: txStudent.regNo },
+          data: { hostelId: destination.hostelId, blockId: destination.blockId },
+        })
+        return updated
+      }, { isolationLevel: 'Serializable' })
+    )
+  } catch (error) {
+    if (error?.message === 'ROOM_NOT_FOUND') return fail(res, 'Room not found', 404)
+    if (error?.message === 'STUDENT_NOT_FOUND') return fail(res, 'Student not found', 404)
+    if (error?.message === 'ROOM_UNAVAILABLE') return fail(res, 'Room is not available for assignment', 409)
+    if (error?.message === 'ROOM_FULL') return fail(res, 'Room capacity exceeded', 409)
+    if (error?.message === 'ACTIVE_ALLOCATION_EXISTS') {
+      return fail(res, 'Use the allocation workflow for this student', 409)
+    }
+    throw error
+  }
+
+  await logAudit(req.user?.name || 'Warden', 'Assigned room', 'Student', student.name, student.roomno || '-', room.roomNo, auditMeta(req))
+  await addNotification('Room changed', `${student.name} moved to room ${room.roomNo}.`)
   return ok(res, updatedStudent)
 })
 
@@ -1300,12 +1453,39 @@ router.post('/wardens', async (req, res) => {
 
 router.put('/wardens/:id', async (req, res) => {
   if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
-  const warden = await prisma.user.findUnique({ where: { id: num(req.params.id) } })
+  const warden = await prisma.user.findFirst({
+    where: { id: num(req.params.id), role: { in: WARDEN_ROLES } },
+  })
   if (!warden) return fail(res, 'Warden not found', 404)
   const body = req.body || {}
+  const hasHostelUpdate = Object.prototype.hasOwnProperty.call(body, 'hostelId')
+  const nextHostelId = hasHostelUpdate
+    ? (body.hostelId ? num(body.hostelId) : null)
+    : warden.hostelId
+  const hasBlockUpdate = Object.prototype.hasOwnProperty.call(body, 'blockId')
+  const nextBlockId = hasBlockUpdate
+    ? (body.blockId ? num(body.blockId) : null)
+    : (hasHostelUpdate && nextHostelId !== warden.hostelId ? null : warden.blockId)
+
+  if (nextHostelId) {
+    const hostel = await prisma.hostel.findUnique({ where: { id: nextHostelId } })
+    if (!hostel) return fail(res, 'Hostel not found', 404)
+  }
+  if (nextBlockId) {
+    const block = await prisma.block.findUnique({ where: { id: nextBlockId } })
+    if (!block) return fail(res, 'Block not found', 404)
+    if (block.hostelId !== nextHostelId) {
+      return fail(res, 'Block does not belong to the selected hostel', 400)
+    }
+  }
+
   const updated = await prisma.user.update({
     where: { id: warden.id },
-    data: pick(body, ['name', 'email', 'hostelId', 'blockId']),
+    data: {
+      ...pick(body, ['name', 'email']),
+      hostelId: nextHostelId,
+      blockId: nextBlockId,
+    },
   })
   await logAudit(req.user?.name || 'Admin', 'Updated warden', 'Warden', warden.name, warden.email, updated.email, auditMeta(req))
   return ok(res, publicUser(updated))
@@ -1313,9 +1493,12 @@ router.put('/wardens/:id', async (req, res) => {
 
 router.delete('/wardens/:id', async (req, res) => {
   if (!(await adminUser(req))) return fail(res, 'Unauthorized', 401)
-  const warden = await prisma.user.findUnique({ where: { id: num(req.params.id) } })
-  await prisma.user.deleteMany({ where: { id: num(req.params.id) } })
-  if (warden) await logAudit(req.user?.name || 'Admin', 'Deleted warden', 'Warden', warden.name, 'active', 'deleted', auditMeta(req))
+  const where = { id: num(req.params.id), role: { in: WARDEN_ROLES } }
+  const warden = await prisma.user.findFirst({ where })
+  if (!warden) return fail(res, 'Warden not found', 404)
+  const deleted = await prisma.user.deleteMany({ where })
+  if (!deleted.count) return fail(res, 'Warden not found', 404)
+  await logAudit(req.user?.name || 'Admin', 'Deleted warden', 'Warden', warden.name, 'active', 'deleted', auditMeta(req))
   return ok(res, { ok: true })
 })
 
@@ -1378,7 +1561,6 @@ router.get('/student/application', async (req, res) => {
 router.post('/allocations', async (req, res) => {
   const student = await requestStudent(req, res)
   if (!student) return
-  if (await studentActiveAllocation(student)) return fail(res, 'You already have an active application')
   const body = req.body || {}
   const prefs = Array.isArray(body.hostelPrefs) ? body.hostelPrefs.map(Number) : []
   if (prefs.length === 0) return fail(res, 'Select at least one hostel preference')
@@ -1386,25 +1568,42 @@ router.post('/allocations', async (req, res) => {
   if (!prefs.every((p) => eligible.includes(p))) {
     return fail(res, 'One or more hostel preferences are not eligible for you')
   }
-  const allocation = await prisma.allocation.create({
-    data: {
-      studentId: student.id,
-      studentName: student.name,
-      regNo: student.regNo,
-      gender: student.gender,
-      year: student.year,
-      hostelPrefs: prefs,
-      roomType: body.roomType || null,
-      status: 'applied',
-      hostelId: null,
-      roomId: null,
-      roomNo: null,
-      bedNo: null,
-      appliedDate: today(),
-      updatedDate: today(),
-      history: [{ status: 'applied', date: today(), by: student.name, note: 'Application submitted' }],
-    },
-  })
+  let allocation
+  try {
+    allocation = await withRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const existing = await tx.allocation.findFirst({
+          where: { studentId: student.id, status: { notIn: ['rejected', 'cancelled'] } },
+        })
+        if (existing) throw new Error('ACTIVE_ALLOCATION_EXISTS')
+
+        return tx.allocation.create({
+          data: {
+            studentId: student.id,
+            studentName: student.name,
+            regNo: student.regNo,
+            gender: student.gender,
+            year: student.year,
+            hostelPrefs: prefs,
+            roomType: body.roomType || null,
+            status: 'applied',
+            hostelId: null,
+            roomId: null,
+            roomNo: null,
+            bedNo: null,
+            appliedDate: today(),
+            updatedDate: today(),
+            history: [{ status: 'applied', date: today(), by: student.name, note: 'Application submitted' }],
+          },
+        })
+      }, { isolationLevel: 'Serializable' })
+    )
+  } catch (error) {
+    if (error?.message === 'ACTIVE_ALLOCATION_EXISTS') {
+      return fail(res, 'You already have an active application', 409)
+    }
+    throw error
+  }
   await addNotification('Allocation submitted', `${student.name} submitted a hostel application.`)
   await logAudit(student.name, 'Submitted application', 'Allocation', student.name, '-', 'Applied', auditMeta(req))
   return ok(res, allocation, 201)
@@ -1462,6 +1661,15 @@ router.post('/allocations/:id/allocate', async (req, res) => {
     if (!room || room.medicalReserved) {
       return fail(res, 'Selected room is not available')
     }
+    if (!['available', 'partially_occupied'].includes(room.status)) {
+      return fail(res, 'Selected room is not available', 409)
+    }
+    if (allocation.roomType && room.type !== allocation.roomType) {
+      return fail(res, 'Selected room does not match the requested room type', 409)
+    }
+    if (!(await eligibleHostels(student)).some((hostel) => hostel.id === room.hostelId)) {
+      return fail(res, 'Student is not eligible for the selected hostel', 409)
+    }
   } else {
     const order = WARDEN_ROLES.includes(user.role) && !(user.role === 'chief_warden' && !user.hostelId)
       ? [user.hostelId]
@@ -1480,9 +1688,10 @@ router.post('/allocations/:id/allocate', async (req, res) => {
   try {
     updated = await doAllocate(allocation, room, 'Warden', auditMeta(req))
   } catch (error) {
-    if (error?.message === 'Room capacity exceeded') {
-      return fail(res, 'Room capacity exceeded', 409)
-    }
+    if (error?.message === 'Room capacity exceeded') return fail(res, 'Room capacity exceeded', 409)
+    if (error?.message === 'Room is not available') return fail(res, 'Room is not available', 409)
+    if (error?.message === 'Allocation is no longer available') return fail(res, error.message, 409)
+    if (error?.message === 'Student not found') return fail(res, error.message, 404)
     throw error
   }
   return ok(res, updated)
@@ -1533,62 +1742,92 @@ router.post('/allocations/:id/transfer', async (req, res) => {
   ) {
     return fail(res, 'Forbidden', 403)
   }
-  if (!room || room.medicalReserved) {
+  if (!room || room.medicalReserved || !['available', 'partially_occupied'].includes(room.status)) {
     return fail(res, 'Selected room is not available')
   }
   const student = await prisma.student.findUnique({ where: { id: allocation.studentId } })
+  if (!student) return fail(res, 'Student not found', 404)
+  if (!(await eligibleHostels(student)).some((hostel) => hostel.id === room.hostelId)) {
+    return fail(res, 'Student is not eligible for the selected hostel', 409)
+  }
   const previous = allocation.roomId
     ? await prisma.room.findUnique({ where: { id: allocation.roomId } })
     : null
+  if (previous?.id === room.id) return fail(res, 'Student is already assigned to this room', 409)
 
-  const updated = await withRetry(() =>
-    prisma.$transaction(async (tx) => {
-      const destLocked = await tx.$queryRaw`SELECT * FROM "Room" WHERE id = ${room.id} FOR UPDATE`
-      if (!destLocked.length) throw new Error('Destination room not found')
-      const destRoom = destLocked[0]
-      if (destRoom.medicalReserved) throw new Error('Destination room is medical reserved')
-
-      const destOccupants = await tx.student.count({ where: { roomId: destRoom.id } })
-      if (destOccupants >= destRoom.seater) throw new Error('Destination room capacity exceeded')
-
-      let srcRoomData = null
-      if (previous) {
-        const srcLocked = await tx.$queryRaw`SELECT * FROM "Room" WHERE id = ${previous.id} FOR UPDATE`
-        if (srcLocked.length) srcRoomData = srcLocked[0]
-      }
-
-      if (srcRoomData) {
-        const srcOccupants = await tx.student.count({ where: { roomId: srcRoomData.id, id: { not: student.id } } })
-        if (srcOccupants === 0 && !srcRoomData.medicalReserved && !['maintenance', 'blocked', 'cleaning'].includes(srcRoomData.status)) {
-          await tx.room.update({ where: { id: srcRoomData.id }, data: { status: 'available' } })
+  let updated
+  try {
+    updated = await withRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const roomIds = [...new Set([previous?.id, room.id].filter(Number.isInteger))].sort((a, b) => a - b)
+        const lockedRooms = new Map()
+        for (const roomId of roomIds) {
+          const locked = await tx.$queryRaw`SELECT * FROM "Room" WHERE id = ${roomId} FOR UPDATE`
+          if (locked.length) lockedRooms.set(roomId, locked[0])
         }
-      }
 
-      const alloc = await tx.allocation.update({
-        where: { id: allocation.id },
-        data: {
-          roomId: destRoom.id,
-          hostelId: destRoom.hostelId,
-          roomNo: destRoom.roomNo,
-          bedNo: destOccupants + 1,
-          updatedDate: today(),
-          history: [
-            ...(allocation.history || []),
-            { status: 'transferred', date: today(), by: 'Warden', note: `Transferred to ${destRoom.roomNo}` },
-          ],
-        },
-      })
-      await tx.room.update({
-        where: { id: destRoom.id },
-        data: { status: destOccupants + 1 >= destRoom.seater ? 'full' : 'partially_occupied' },
-      })
-      await tx.student.update({
-        where: { id: student.id },
-        data: { roomId: destRoom.id, hostelId: destRoom.hostelId, blockId: destRoom.blockId, roomno: destRoom.roomNo },
-      })
-      return alloc
-    }, { isolationLevel: 'Serializable' })
-  )
+        const destRoom = lockedRooms.get(room.id)
+        if (!destRoom) throw new Error('Destination room not found')
+        if (destRoom.medicalReserved || !['available', 'partially_occupied'].includes(destRoom.status)) {
+          throw new Error('Destination room is not available')
+        }
+
+        const destOccupants = await tx.student.count({ where: { roomId: destRoom.id } })
+        if (destOccupants >= destRoom.seater) throw new Error('Destination room capacity exceeded')
+
+        const srcRoomData = previous ? lockedRooms.get(previous.id) : null
+
+        if (srcRoomData) {
+          const srcOccupants = await tx.student.count({ where: { roomId: srcRoomData.id, id: { not: student.id } } })
+          if (!srcRoomData.medicalReserved && !['maintenance', 'blocked', 'cleaning'].includes(srcRoomData.status)) {
+            const sourceStatus = srcOccupants === 0
+              ? 'available'
+              : srcOccupants >= srcRoomData.seater
+                ? 'full'
+                : 'partially_occupied'
+            await tx.room.update({ where: { id: srcRoomData.id }, data: { status: sourceStatus } })
+          }
+        }
+
+        const alloc = await tx.allocation.update({
+          where: { id: allocation.id },
+          data: {
+            roomId: destRoom.id,
+            hostelId: destRoom.hostelId,
+            roomNo: destRoom.roomNo,
+            bedNo: destOccupants + 1,
+            updatedDate: today(),
+            history: [
+              ...(allocation.history || []),
+              { status: 'transferred', date: today(), by: 'Warden', note: `Transferred to ${destRoom.roomNo}` },
+            ],
+          },
+        })
+        await tx.room.update({
+          where: { id: destRoom.id },
+          data: { status: destOccupants + 1 >= destRoom.seater ? 'full' : 'partially_occupied' },
+        })
+        await tx.student.update({
+          where: { id: student.id },
+          data: { roomId: destRoom.id, hostelId: destRoom.hostelId, blockId: destRoom.blockId, roomno: destRoom.roomNo },
+        })
+        await tx.user.updateMany({
+          where: { role: 'student', regNo: student.regNo },
+          data: { hostelId: destRoom.hostelId, blockId: destRoom.blockId },
+        })
+        return alloc
+      }, { isolationLevel: 'Serializable' })
+    )
+  } catch (error) {
+    if (error?.message === 'Destination room not found') return fail(res, 'Room not found', 404)
+    if (error?.message === 'Destination room is not available') {
+      return fail(res, 'Selected room is not available', 409)
+    }
+    if (error?.message === 'Destination room capacity exceeded') {
+      return fail(res, 'Room capacity exceeded', 409)
+    }
+    throw error
+  }
 
   await logAudit('Warden', 'Transferred room', 'Allocation', student.name, previous?.roomNo || '-', room.roomNo, auditMeta(req))
   return ok(res, updated)
@@ -1612,13 +1851,22 @@ router.post('/allocations/:id/cancel', async (req, res) => {
         const room = lockedRoom[0]
 
         const otherOccupants = await tx.student.count({ where: { roomId: room.id, id: { not: student?.id } } })
-        if (otherOccupants === 0 && !room.medicalReserved && !['maintenance', 'blocked', 'cleaning'].includes(room.status)) {
-          await tx.room.update({ where: { id: room.id }, data: { status: 'available' } })
+        if (!room.medicalReserved && !['maintenance', 'blocked', 'cleaning'].includes(room.status)) {
+          const roomStatus = otherOccupants === 0
+            ? 'available'
+            : otherOccupants >= room.seater
+              ? 'full'
+              : 'partially_occupied'
+          await tx.room.update({ where: { id: room.id }, data: { status: roomStatus } })
         }
         if (student) {
           await tx.student.update({
             where: { id: student.id },
             data: { roomId: null, hostelId: null, blockId: null, roomno: null, active: false },
+          })
+          await tx.user.updateMany({
+            where: { role: 'student', regNo: student.regNo },
+            data: { hostelId: null, blockId: null },
           })
         }
       }

@@ -65,7 +65,8 @@ export default function AllocationApply() {
       })
       message.success('Allocation application submitted')
       setSubmitted(result)
-      reload()
+      reloadStudents()
+      reloadAllocations()
     } catch (error) {
       message.error(error.message)
     } finally {

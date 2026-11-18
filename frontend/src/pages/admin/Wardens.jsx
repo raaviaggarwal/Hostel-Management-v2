@@ -103,9 +103,13 @@ export default function Wardens() {
     { title: 'Hostel', render: (_, r) => hostelName(r.hostelId) },
     { title: 'Block', render: (_, r) => blockName(r.blockId) || '-' },
     {
-      title: 'Active',
-      dataIndex: 'status',
-      render: (v) => <Tag color={v === 'active' ? 'green' : 'default'}>Active</Tag>,
+      title: 'Password Setup',
+      dataIndex: 'mustChangePassword',
+      render: (required) => (
+        <Tag color={required ? 'gold' : 'green'}>
+          {required ? 'Change required' : 'Complete'}
+        </Tag>
+      ),
     },
     {
       title: 'Actions',

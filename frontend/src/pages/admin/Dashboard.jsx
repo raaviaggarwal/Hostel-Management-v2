@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert, Card, Col, Row, Statistic, Skeleton, Table, Tag } from 'antd'
+import { Alert, Button, Card, Col, Row, Statistic, Skeleton, Table, Tag } from 'antd'
 import {
   HomeOutlined,
   ApartmentOutlined,
@@ -63,25 +63,38 @@ export default function Dashboard() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     let active = true
-    resourceApi
-      .get('/admin/dashboard')
-      .then((result) => {
-        if (active) setData(result)
-      })
-      .catch((requestError) => {
+    let inFlight = false
+    const load = async () => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const result = await resourceApi.get('/admin/dashboard')
+        if (active) {
+          setData(result)
+          setError(null)
+        }
+      } catch (requestError) {
         if (active) setError(requestError)
-      })
-      .finally(() => {
+      } finally {
+        inFlight = false
         if (active) setLoading(false)
-      })
+      }
+    }
+
+    load()
+    const intervalId = window.setInterval(load, 30000)
+    window.addEventListener('focus', load)
 
     return () => {
       active = false
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', load)
     }
-  }, [])
+  }, [refreshKey])
 
   if (loading) return <Skeleton active paragraph={{ rows: 12 }} />
   if (error || !data) {
@@ -91,6 +104,7 @@ export default function Dashboard() {
         showIcon
         message="Unable to load the dashboard"
         description={error?.message || 'Dashboard data is unavailable.'}
+        action={<Button size="small" onClick={() => setRefreshKey((key) => key + 1)}>Retry</Button>}
       />
     )
   }

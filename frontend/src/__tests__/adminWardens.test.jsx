@@ -73,6 +73,7 @@ describe('Admin Wardens page', () => {
       expect(screen.getByText('Geeta Bhawan Junior Wing')).toBeInTheDocument()
       expect(screen.getByText('Junior Wing')).toBeInTheDocument()
     })
-    expect(screen.getAllByText('Active').length).toBeGreaterThan(0)
+    expect(screen.getByText('Change required')).toBeInTheDocument()
+    expect(screen.queryByText('Active')).not.toBeInTheDocument()
   })
 })

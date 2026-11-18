@@ -46,7 +46,7 @@ export default function WardenAllocations() {
     refreshIntervalMs: 30000,
     refreshOnFocus: true,
   })
-  const { data: rooms } = useResource('/rooms')
+  const { data: rooms, reload: reloadRooms } = useResource('/rooms')
   const { data: blocks } = useResource('/blocks')
   const { data: hostels } = useResource('/hostels')
 
@@ -72,7 +72,7 @@ export default function WardenAllocations() {
             (r.status === 'available' || r.status === 'partially_occupied')
         )
         .map((r) => ({
-          label: `${r.roomNo} — ${r.type} (${r.occupants}/${r.seater} in)`,
+          label: `${r.roomNo} — ${r.type} (${r.occupied}/${r.seater} in)`,
           value: r.id,
         })),
     [rooms, hostelBlockIds]
@@ -94,6 +94,7 @@ export default function WardenAllocations() {
       await fn()
       message.success(success)
       reload()
+      reloadRooms()
     } catch (error) {
       message.error(error.message)
     } finally {

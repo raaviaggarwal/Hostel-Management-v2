@@ -8,11 +8,13 @@ const { prismaMock } = vi.hoisted(() => ({
       findUnique: vi.fn(),
       findFirst: vi.fn(),
       create: vi.fn(),
+      updateMany: vi.fn(),
     },
-    student: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+    student: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
     notification: { findMany: vi.fn(), updateMany: vi.fn() },
     allocation: { findFirst: vi.fn(), findMany: vi.fn() },
-    hostel: { findMany: vi.fn() },
+    hostel: { findMany: vi.fn(), findUnique: vi.fn() },
+    block: { findUnique: vi.fn() },
     room: { findUnique: vi.fn(), findMany: vi.fn() },
     complaint: { findMany: vi.fn() },
     leave: { findMany: vi.fn() },
@@ -29,6 +31,7 @@ const admin = { id: 1, role: 'admin', tokenVersion: 0 }
 const warden = { id: 2, role: 'warden', tokenVersion: 0, hostelId: 2 }
 const hostelLessWarden = { id: 3, role: 'chief_warden', tokenVersion: 0 }
 const student = { id: 4, role: 'student', tokenVersion: 0, regNo: 'STU-4' }
+const security = { id: 5, role: 'security', tokenVersion: 0 }
 const studentPayload = { regNo: 'NEW-REG', name: 'New Student', gender: 'male', course: 'Engineering', password: 'password123', emailid: 'newstudent@test.com' }
 
 const auth = (user) => ({ Authorization: `Bearer ${signToken(user)}` })
@@ -36,16 +39,19 @@ const auth = (user) => ({ Authorization: `Bearer ${signToken(user)}` })
 beforeEach(() => {
   vi.clearAllMocks()
   prismaMock.user.findUnique.mockImplementation(async ({ where }) => {
-    return [admin, warden, hostelLessWarden, student].find((user) => user.id === where.id) || null
+    return [admin, warden, hostelLessWarden, student, security].find((user) => user.id === where.id) || null
   })
   prismaMock.user.findFirst.mockResolvedValue(null)
   prismaMock.user.create.mockImplementation(async ({ data }) => ({ id: 999, ...data }))
   prismaMock.student.create.mockImplementation(async ({ data }) => ({ id: 500, ...data }))
+  prismaMock.student.update.mockImplementation(async ({ data }) => ({ id: 20, ...data }))
   prismaMock.student.findMany.mockResolvedValue([])
   prismaMock.notification.findMany.mockResolvedValue([])
   prismaMock.allocation.findFirst.mockResolvedValue(null)
   prismaMock.allocation.findMany.mockResolvedValue([])
   prismaMock.hostel.findMany.mockResolvedValue([])
+  prismaMock.hostel.findUnique.mockResolvedValue(null)
+  prismaMock.block.findUnique.mockResolvedValue(null)
   prismaMock.room.findMany.mockResolvedValue([])
   prismaMock.complaint.findMany.mockResolvedValue([])
   prismaMock.leave.findMany.mockResolvedValue([])
@@ -68,6 +74,61 @@ describe('POST /api/students', () => {
     expect(prismaMock.user.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ username: studentPayload.regNo, role: 'student' }),
     }))
+  })
+
+  it('persists Admin-selected hostel and block on both Student and User records', async () => {
+    prismaMock.hostel.findUnique.mockResolvedValueOnce({ id: 2 })
+    prismaMock.block.findUnique.mockResolvedValueOnce({ id: 7, hostelId: 2 })
+
+    const response = await request(app)
+      .post('/api/students')
+      .set(auth(admin))
+      .send({ ...studentPayload, hostelId: 2, blockId: 7 })
+
+    expect(response.status).toBe(201)
+    expect(prismaMock.student.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ hostelId: 2, blockId: 7 }),
+    }))
+    expect(prismaMock.user.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ hostelId: 2, blockId: 7 }),
+    }))
+  })
+
+  it('rejects a Student block that does not belong to the selected hostel', async () => {
+    prismaMock.hostel.findUnique.mockResolvedValueOnce({ id: 2 })
+    prismaMock.block.findUnique.mockResolvedValueOnce({ id: 7, hostelId: 9 })
+
+    const response = await request(app)
+      .post('/api/students')
+      .set(auth(admin))
+      .send({ ...studentPayload, hostelId: 2, blockId: 7 })
+
+    expect(response.status).toBe(400)
+    expect(prismaMock.student.create).not.toHaveBeenCalled()
+  })
+
+  it('synchronizes editable identity fields without accepting room relationship IDs', async () => {
+    prismaMock.student.findUnique.mockResolvedValueOnce({
+      id: 20,
+      regNo: 'STU-20',
+      name: 'Before',
+      emailid: 'before@example.test',
+    })
+
+    const response = await request(app)
+      .put('/api/students/20')
+      .set(auth(admin))
+      .send({ name: 'After', emailid: 'after@example.test', roomId: 999, hostelId: 999 })
+
+    expect(response.status).toBe(200)
+    expect(prismaMock.student.update).toHaveBeenCalledWith({
+      where: { id: 20 },
+      data: { name: 'After', emailid: 'after@example.test' },
+    })
+    expect(prismaMock.user.updateMany).toHaveBeenCalledWith({
+      where: { role: 'student', regNo: 'STU-20' },
+      data: { name: 'After', email: 'after@example.test' },
+    })
   })
 
   it('lets a warden create a student only in their assigned hostel', async () => {
@@ -126,10 +187,8 @@ describe('POST /api/students', () => {
     // Reset mock and set up sequence for all requests
     prismaMock.user.findUnique.mockReset()
     prismaMock.user.findUnique
-      .mockResolvedValueOnce(admin) // getUser for missingPassword request
       .mockResolvedValueOnce(admin) // getUser for duplicate request
       .mockResolvedValueOnce({ id: 999, username: studentPayload.regNo }) // regNo duplicate check
-      .mockResolvedValueOnce(null) // email duplicate check
     const duplicate = await request(app)
       .post('/api/students')
       .set(auth(admin))
@@ -139,6 +198,25 @@ describe('POST /api/students', () => {
     expect(missingPassword.status).toBe(400)
     expect(duplicate.status).toBe(409)
     expect(duplicate.body.message).toMatch(/registration number already/i)
+  })
+
+  it('rejects a missing or malformed student email before writing records', async () => {
+    prismaMock.user.findUnique.mockImplementation(async ({ where }) => (
+      [admin, warden, hostelLessWarden, student, security].find((user) => user.id === where.id) || null
+    ))
+
+    const missingEmail = await request(app)
+      .post('/api/students')
+      .set(auth(admin))
+      .send({ ...studentPayload, emailid: '' })
+    const malformedEmail = await request(app)
+      .post('/api/students')
+      .set(auth(admin))
+      .send({ ...studentPayload, emailid: 'not-an-email' })
+
+    expect(missingEmail.status).toBe(400)
+    expect(malformedEmail.status).toBe(400)
+    expect(prismaMock.student.create).not.toHaveBeenCalled()
   })
 
   it('requires authentication for student and notification lists', async () => {
@@ -194,6 +272,27 @@ describe('POST /api/students', () => {
       where: { hostelId: warden.hostelId },
       orderBy: { id: 'asc' },
     })
+  })
+
+  it('returns only name and room for security student lookups', async () => {
+    prismaMock.student.findMany.mockResolvedValueOnce([
+      { id: 12, name: 'Student', roomno: 'A-101' },
+    ])
+
+    const response = await request(app)
+      .get('/api/students')
+      .set(auth(security))
+
+    expect(response.status).toBe(200)
+    expect(response.body[0]).toEqual({
+      id: 12,
+      name: 'Student',
+      roomno: 'A-101',
+      allocationStatus: null,
+    })
+    expect(prismaMock.student.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: { id: true, name: true, roomno: true },
+    }))
   })
 
   it('requires an admin token for the admin dashboard', async () => {

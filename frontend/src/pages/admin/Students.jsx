@@ -498,9 +498,10 @@ export default function Students() {
             />
           </Form.Item>
 
-          <Form.Item label="Email">
+          <Form.Item label="Email" required>
             <Input
               type="email"
+              required
               placeholder="Enter email address"
               value={newStudent.emailid}
               onChange={(e) =>

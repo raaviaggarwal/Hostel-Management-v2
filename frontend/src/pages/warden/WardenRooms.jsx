@@ -26,14 +26,14 @@ export default function WardenRooms() {
 
   const { query, setQuery, filtered: searchFiltered } = useTableFilter(scoped, ['roomNo'])
 
-  const occupancy = (roomNo) => students.filter((s) => s.roomno === roomNo).length
+  const occupancy = (roomId) => students.filter((s) => s.roomId === roomId).length
   const blockName = (id) => blocks.find((b) => b.id === id)?.name || '-'
 
   const columns = [
     { title: 'Room No', dataIndex: 'roomNo' },
     { title: 'Block', render: (_, r) => blockName(r.blockId) },
     { title: 'Seater', dataIndex: 'seater' },
-    { title: 'Occupancy', render: (_, r) => `${occupancy(r.roomNo)} / ${r.seater}` },
+    { title: 'Occupancy', render: (_, r) => `${occupancy(r.id)} / ${r.seater}` },
     { title: 'Status', dataIndex: 'status', render: (v) => <StatusTag status={v} /> },
   ]
 

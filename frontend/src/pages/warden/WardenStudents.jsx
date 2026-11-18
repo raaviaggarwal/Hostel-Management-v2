@@ -42,12 +42,19 @@ export default function WardenStudents() {
     course: '',
     contactno: '',
     emailid: '',
+    password: '',
     guardianName: '',
     guardianRelation: '',
   })
 
   const roomOptions = rooms
-    .filter((room) => String(room.hostelId) === String(user?.hostelId))
+    .filter(
+      (room) =>
+        String(room.hostelId) === String(user?.hostelId) &&
+        !room.medicalReserved &&
+        ['available', 'partially_occupied'].includes(room.status) &&
+        room.occupied < room.seater
+    )
     .map((room) => ({
       label: `${room.roomNo} — ${
         blocks.find((b) => b.id === room.blockId)?.name || '-'
@@ -88,9 +95,7 @@ export default function WardenStudents() {
 
     try {
       await resourceApi.put(`/students/${assigning.id}/room`, {
-        roomno: room.roomNo,
-        blockId: room.blockId,
-        hostelId: blocks.find((b) => b.id === room.blockId)?.hostelId,
+        roomId: room.id,
       })
 
       message.success('Room assigned successfully')
@@ -113,6 +118,7 @@ export default function WardenStudents() {
       course: '',
       contactno: '',
       emailid: '',
+      password: '',
       guardianName: '',
       guardianRelation: '',
     })
@@ -123,6 +129,10 @@ export default function WardenStudents() {
 
     if (!newStudent.regNo || !newStudent.name) {
       message.error('Registration number and name are required')
+      return
+    }
+    if (typeof newStudent.password !== 'string' || newStudent.password.length < 6) {
+      message.error('Password must be at least 6 characters')
       return
     }
 
@@ -182,6 +192,7 @@ export default function WardenStudents() {
             type="text"
             icon={<SwapOutlined />}
             onClick={() => openAssign(record)}
+            disabled={Boolean(record.allocationStatus)}
           />
         </Space>
       ),
@@ -397,15 +408,30 @@ export default function WardenStudents() {
             />
           </Form.Item>
 
-          <Form.Item label="Email">
+          <Form.Item label="Email" required>
             <Input
               type="email"
+              required
               placeholder="Enter email address"
               value={newStudent.emailid}
               onChange={(e) =>
                 setNewStudent({
                   ...newStudent,
                   emailid: e.target.value,
+                })
+              }
+            />
+          </Form.Item>
+
+          <Form.Item label="Initial Password" required>
+            <Input.Password
+              autoComplete="new-password"
+              placeholder="At least 6 characters"
+              value={newStudent.password}
+              onChange={(e) =>
+                setNewStudent({
+                  ...newStudent,
+                  password: e.target.value,
                 })
               }
             />
