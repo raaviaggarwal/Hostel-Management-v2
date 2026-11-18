@@ -7,3 +7,8 @@ dist/
 
 # Runtime logs
 *.log
+
+# Environment files
+.env
+.env.*
+!.env.example
