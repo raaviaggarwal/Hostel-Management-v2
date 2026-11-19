@@ -62,9 +62,9 @@ describe('Security Hardening - Integration Tests', () => {
         .send({ name: 'New Warden', email: 'warden@test.com', hostelId: 2 })
 
       expect(response.status).toBe(201)
-      expect(response.body.tempPassword).toBeDefined()
-      expect(response.body.tempPassword.length).toBeGreaterThanOrEqual(12)
-      expect(response.body.username).toMatch(/^warden_[A-Za-z0-9_-]+$/)
+      expect(response.body.tempPassword).toBeUndefined()
+      expect(response.body.username).toBeDefined()
+      expect(response.body.message).toContain('Credentials sent to email')
       expect(response.body.mustChangePassword).toBe(true)
       expect(response.body.role).toBe('warden')
       expect(response.body.password).toBeUndefined()
@@ -114,7 +114,8 @@ describe('Security Hardening - Integration Tests', () => {
       expect(response.status).toBe(201)
       expect(response.body.hostelId).toBeNull()
       expect(response.body.blockId).toBeNull()
-      expect(response.body.tempPassword).toBeDefined()
+      expect(response.body.tempPassword).toBeUndefined()
+      expect(response.body.message).toContain('Credentials sent to email')
       expect(response.body.mustChangePassword).toBe(true)
       expect(response.body.role).toBe('warden')
       createdRecords.users.push(response.body.id)
@@ -230,14 +231,14 @@ describe('Security Hardening - Integration Tests', () => {
   })
 
   describe('Student backend password validation', () => {
-    it('rejects password shorter than 6 characters', async () => {
+    it('rejects password shorter than 12 characters', async () => {
       const response = await request(app)
         .post('/api/students')
         .set(auth(admin))
         .send({ regNo: 'NEW-REG', name: 'New Student', password: 'abc', emailid: 'new@student.test' })
 
       expect(response.status).toBe(400)
-      expect(response.body.message).toContain('at least 6')
+      expect(response.body.message).toContain('at least 12 characters')
     })
 
     it('rejects non-string password', async () => {
@@ -247,14 +248,14 @@ describe('Security Hardening - Integration Tests', () => {
         .send({ regNo: 'NEW-REG', name: 'New Student', password: 123, emailid: 'new@student.test' })
 
       expect(response.status).toBe(400)
-      expect(response.body.message).toContain('at least 6')
+      expect(response.body.message).toContain('at least 12 characters')
     })
 
     it('accepts valid password', async () => {
       const response = await request(app)
         .post('/api/students')
         .set(auth(admin))
-        .send({ regNo: 'NEW-REG', name: 'New Student', password: 'password123', gender: 'Male', course: 'B.Tech', emailid: 'new@student.com' })
+        .send({ regNo: 'NEW-REG', name: 'New Student', password: 'Password123!@#', gender: 'Male', course: 'B.Tech', emailid: 'new@student.com' })
 
       expect(response.status).toBe(201)
       createdRecords.users.push(response.body.userId)

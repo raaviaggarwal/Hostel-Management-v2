@@ -32,7 +32,7 @@ const warden = { id: 2, role: 'warden', tokenVersion: 0, hostelId: 2 }
 const hostelLessWarden = { id: 3, role: 'chief_warden', tokenVersion: 0 }
 const student = { id: 4, role: 'student', tokenVersion: 0, regNo: 'STU-4' }
 const security = { id: 5, role: 'security', tokenVersion: 0 }
-const studentPayload = { regNo: 'NEW-REG', name: 'New Student', gender: 'male', course: 'Engineering', password: 'password123', emailid: 'newstudent@test.com' }
+const studentPayload = { regNo: 'NEW-REG', name: 'New Student', gender: 'male', course: 'Engineering', password: 'Password123!@#', emailid: 'newstudent@test.com' }
 
 const auth = (user) => ({ Authorization: `Bearer ${signToken(user)}` })
 
@@ -308,15 +308,9 @@ describe('POST /api/students', () => {
   it('returns server errors instead of treating database outages as invalid tokens', async () => {
     const databaseError = new Error('database connection unavailable')
     prismaMock.user.findUnique.mockRejectedValueOnce(databaseError)
-    const logError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    try {
-      const response = await request(app).get('/api/auth/me').set(auth(admin))
-      expect(response.status).toBe(500)
-      expect(response.body.message).toBe('Internal server error')
-      expect(logError).toHaveBeenCalledWith('Server error:', databaseError.message)
-    } finally {
-      logError.mockRestore()
-    }
+    const response = await request(app).get('/api/auth/me').set(auth(admin))
+    expect(response.status).toBe(500)
+    expect(response.body.message).toBe('Internal server error')
   })
 })

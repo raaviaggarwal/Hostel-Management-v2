@@ -52,7 +52,7 @@ describe('Seed Database Safety', () => {
     const mockPrisma = createMockPrisma('production_db')
 
     await expect(seedDatabase(mockPrisma)).rejects.toThrow(
-      "seedDatabase refused to run: connected database is 'production_db', expected 'hostel_management_test'"
+      "seedDatabase refused to run: connected database is 'production_db'. Seeding is allowed only for hostel_management_test or hostel_management_new with ALLOW_DESTRUCTIVE_SEED=true."
     )
     expect(mockPrisma.$transaction).not.toHaveBeenCalled()
   })

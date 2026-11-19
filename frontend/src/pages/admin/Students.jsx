@@ -11,13 +11,11 @@ import {
   Select,
   Space,
   Tag,
-  Alert,
 } from 'antd'
 import {
   EyeOutlined,
   EditOutlined,
   PlusOutlined,
-  CopyOutlined,
 } from '@ant-design/icons'
 
 import { useResource } from '../../hooks/useResource'
@@ -43,7 +41,6 @@ export default function Students() {
   const [editingOpen, setEditingOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [addStudentOpen, setAddStudentOpen] = useState(false)
-  const [credentials, setCredentials] = useState(null)
   const [selectedHostel, setSelectedHostel] = useState(null)
 
   const [newStudent, setNewStudent] = useState({
@@ -151,13 +148,9 @@ export default function Students() {
     setSaving(true)
 
     try {
-      const result = await resourceApi.post('/students', newStudent)
+      await resourceApi.post('/students', newStudent)
 
       message.success('Student and login account created successfully')
-      setCredentials({
-        username: result.user?.username || newStudent.regNo,
-        password: newStudent.password,
-      })
       setAddStudentOpen(false)
       resetStudentForm()
       reload()
@@ -554,10 +547,16 @@ export default function Students() {
           <Form.Item
             label="Password"
             required
-            rules={[{ min: 6, message: 'Password must be at least 6 characters' }]}
+            rules={[
+              { min: 12, message: 'Password must be at least 12 characters' },
+              { pattern: /[A-Z]/, message: 'Must contain uppercase letter' },
+              { pattern: /[a-z]/, message: 'Must contain lowercase letter' },
+              { pattern: /[0-9]/, message: 'Must contain number' },
+              { pattern: /[^A-Za-z0-9]/, message: 'Must contain special character' },
+            ]}
           >
             <Input.Password
-              placeholder="Enter password (min 6 characters)"
+              placeholder="Enter password (min 12 chars, upper, lower, number, special)"
               value={newStudent.password}
               onChange={(e) =>
                 setNewStudent({
@@ -625,39 +624,10 @@ export default function Students() {
               >
                 Add Student
               </Button>
-            </Space>
-          </Form.Item>
-
-          {credentials && (
-            <Alert
-              message="Student login credentials (shown once — copy now)"
-              type="success"
-              closable
-              showIcon
-            >
-              <div style={{ marginTop: 12 }}>
-                <strong>Username:</strong>
-                <span style={{ marginLeft: 8, fontFamily: 'monospace' }}>{credentials.username}</span>
-                <br />
-                <strong>Password:</strong>
-                <span style={{ marginLeft: 8, fontFamily: 'monospace' }}>{credentials.password}</span>
-                <br />
-                <Button
-                  type="text"
-                  icon={<CopyOutlined />}
-                  size="small"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`Username: ${credentials.username}\nPassword: ${credentials.password}`)
-                    message.success('Credentials copied to clipboard')
-                  }}
-                >
-                  Copy Credentials
-                </Button>
-              </div>
-            </Alert>
-          )}
-        </Form>
-      </Drawer>
-    </div>
-  )
-}   
+</Space>
+           </Form.Item>
+         </Form>
+       </Drawer>
+     </div>
+   )
+ }

@@ -62,12 +62,12 @@ describe('CORS Configuration', () => {
     expect(res.status).toBe(403)
   })
 
-  it('allows health check with no Origin header', async () => {
+  it('rejects health check with no Origin header in production', async () => {
     const res = await request(app)
       .get('/health')
 
-    expect(res.status).toBe(200)
-    expect(res.body.status).toBe('ok')
+    expect(res.status).toBe(403)
+    expect(res.body.message).toContain('Origin header required')
   })
 
   it('includes credentials in allowed headers', async () => {

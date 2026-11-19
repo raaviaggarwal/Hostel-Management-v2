@@ -1,8 +1,9 @@
 # Workflow Test Report
 
-**Date**: 2026-11-18
+**Date**: 2026-11-19
 **Test Environment**: Vitest + Supertest against seeded test database
 **Test Suite**: `backend/tests/api.test.js`, `backend/tests/concurrency.test.js`
+**Security Fixes Applied**: Strong password policy, JWT 2h expiry, rate limiting everywhere, CORS hardened, structured logging, graceful shutdown, /ready endpoint, removed credential display from API/frontend
 
 ---
 

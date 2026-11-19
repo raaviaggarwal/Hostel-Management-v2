@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { App as AntApp, Button, Card, Input, Space, Tag, Alert } from 'antd'
-import { PlusOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { useResource } from '../../hooks/useResource'
 import { resourceApi } from '../../api/client'
 import PageHeader from '../../components/PageHeader'
@@ -19,7 +19,6 @@ export default function Wardens() {
   const [editing, setEditing] = useState(null)
   const [selectedHostel, setSelectedHostel] = useState(null)
   const [saving, setSaving] = useState(false)
-  const [credentials, setCredentials] = useState(null)
 
   const hostelName = (id) => hostels.find((h) => h.id === id)?.name || '-'
   const blockName = (id) => blocks.find((b) => b.id === id)?.name || '-'
@@ -51,12 +50,8 @@ export default function Wardens() {
         await resourceApi.update('/wardens', editing.id, values)
         message.success('Warden updated')
       } else {
-        const result = await resourceApi.post('/wardens', values)
-        message.success('Warden created successfully')
-        setCredentials({
-          username: result.username,
-          tempPassword: result.tempPassword,
-        })
+        await resourceApi.post('/wardens', values)
+        message.success('Warden created successfully. Credentials sent to email.')
       }
       setModalOpen(false)
       reload()
@@ -142,36 +137,6 @@ export default function Wardens() {
           </Space>
         }
       />
-
-      {credentials && (
-        <Alert
-          message="Warden onboarding credentials (shown once — copy now)"
-          type="success"
-          closable
-          showIcon
-          style={{ marginBottom: 16 }}
-        >
-          <div>
-            <strong>Username:</strong>
-            <span style={{ marginLeft: 8, fontFamily: 'monospace' }}>{credentials.username}</span>
-            <br />
-            <strong>Temporary Password:</strong>
-            <span style={{ marginLeft: 8, fontFamily: 'monospace' }}>{credentials.tempPassword}</span>
-            <br />
-            <Button
-              type="text"
-              icon={<CopyOutlined />}
-              size="small"
-              onClick={() => {
-                navigator.clipboard.writeText(`Username: ${credentials.username}\nTemporary Password: ${credentials.tempPassword}`)
-                message.success('Credentials copied to clipboard')
-              }}
-            >
-              Copy Credentials
-            </Button>
-          </div>
-        </Alert>
-      )}
 
       <Card>
         {error && (

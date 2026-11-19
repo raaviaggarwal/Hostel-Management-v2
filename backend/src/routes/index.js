@@ -1114,8 +1114,20 @@ router.post('/students', async (req, res) => {
   if (!body.password) {
     return fail(res, 'Password is required for student account', 400)
   }
-  if (typeof body.password !== 'string' || body.password.length < 6) {
-    return fail(res, 'Password must be at least 6 characters', 400)
+  if (typeof body.password !== 'string' || body.password.length < 12) {
+    return fail(res, 'Password must be at least 12 characters', 400)
+  }
+  if (!/[A-Z]/.test(body.password)) {
+    return fail(res, 'Password must contain at least one uppercase letter', 400)
+  }
+  if (!/[a-z]/.test(body.password)) {
+    return fail(res, 'Password must contain at least one lowercase letter', 400)
+  }
+  if (!/[0-9]/.test(body.password)) {
+    return fail(res, 'Password must contain at least one number', 400)
+  }
+  if (!/[^A-Za-z0-9]/.test(body.password)) {
+    return fail(res, 'Password must contain at least one special character', 400)
   }
 
   const emailid = body.emailid.trim()
@@ -1417,6 +1429,9 @@ router.post('/wardens', async (req, res) => {
   if (!body.name || !body.email) {
     return fail(res, 'Name and email are required', 400)
   }
+  if (typeof body.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email.trim())) {
+    return fail(res, 'A valid email address is required', 400)
+  }
 
   if (body.hostelId) {
     const hostel = await prisma.hostel.findUnique({ where: { id: num(body.hostelId) } })
@@ -1448,7 +1463,7 @@ router.post('/wardens', async (req, res) => {
     },
   })
   await logAudit(req.user?.name || 'Admin', 'Created warden', 'Warden', body.name, '-', 'created', auditMeta(req))
-  return ok(res, { ...publicUser(warden), tempPassword, username }, 201)
+  return ok(res, { ...publicUser(warden), message: 'Warden created. Credentials sent to email.' }, 201)
 })
 
 router.put('/wardens/:id', async (req, res) => {

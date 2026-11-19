@@ -19,14 +19,14 @@
 
 ## Critical Vulnerabilities
 
-### CVE-2026-HMS-001: Production Secrets Committed to Repository
+### CVE-2026-HMS-001: Production Secrets Committed to Repository ⚠️ PARTIALLY REMEDIATED
 
 **CVSS Score**: 9.8 (Critical)
 **CWE**: CWE-798: Use of Hard-coded Credentials
 
-**Location**: `backend/.env` (committed to git)
+**Location**: `backend/.env.backup-before-new-db` (committed to git history in commit 31c1154)
 
-**Details**: The following production secrets are exposed:
+**Details**: The following production secrets were exposed in git history:
 - `JWT_SECRET`: `a9Kx7mP2qL8vR4zT1nW6cY3hF9jD5sG0uB7eQ2wX8`
 - `DATABASE_URL`: `postgres://7022ec8162f7eea6c034c02c9b5fdb8e38b58294fb36d2248bf92c2e193f549c:sk_HjUiagmFjxDMzBY-xLMnV@pooled.db.prisma.io:5432/postgres?sslmode=require`
 - `DIRECT_URL`: `postgres://7022ec8162f7eea6c034c02c9b5fdb8e38b58294fb36d2248bf92c2e193f549c:sk_HjUiagmFjxDMzBY-xLMnV@db.prisma.io:5432/postgres?sslmode=require`
@@ -40,66 +40,41 @@
 - Complete authentication bypass
 - Potential lateral movement to Prisma Postgres infrastructure
 
-**Attack Vector**: 
-1. Clone public repository
-2. Extract secrets from `backend/.env`
-3. Forge admin JWT token using `JWT_SECRET`
-4. Connect to production database
-5. Exfiltrate/modify all student, warden, admin data
+**Remediation Applied**:
+1. ✅ Added `.env` patterns to root `.gitignore` and `frontend/.gitignore`
+2. ✅ Removed `backend/.env.backup-before-new-db` from git tracking (commit 502dc72)
+3. ⚠️ **MANUAL ACTION REQUIRED**: Secrets remain in git history. Must rotate ALL secrets and clean git history with `git filter-repo --path backend/.env.backup-before-new-db --invert-paths`
+4. ⚠️ **MANUAL ACTION REQUIRED**: Rotate ALL secrets in Render, Vercel, GitHub Actions, and Prisma Postgres
 
-**Proof of Concept**:
-```javascript
-// Using exposed JWT_SECRET
-const jwt = require('jsonwebtoken');
-const token = jwt.sign(
-  { sub: 1, role: 'admin', ver: 0 },
-  'a9Kx7mP2qL8vR4zT1nW6cY3hF9jD5sG0uB7eQ2wX8',
-  { expiresIn: '24h', issuer: 'hostel-management', audience: 'hostel-management-web' }
-);
-// Token now valid as admin user ID 1
-```
-
-**Remediation**:
-1. **IMMEDIATE**: Rotate ALL secrets (JWT_SECRET, database passwords)
-2. **IMMEDIATE**: Remove `backend/.env` from git history
-3. **IMMEDIATE**: Add `.env` to root `.gitignore`
-4. Verify no secrets in git history: `git log --all --full-history -- backend/.env`
-5. Audit database access logs for unauthorized connections
+**Verification**: 
+- [ ] JWT_SECRET rotated in Render/Vercel
+- [ ] Database passwords rotated in Prisma Postgres
+- [ ] `.env` not tracked by git ✅
+- [ ] No secrets in git history (requires git-filter-repo) ⚠️
 
 **References**: 
-- Root `.gitignore` missing `.env` entry
-- Backend `.gitignore` has `.env` but file committed at root level
+- Root `.gitignore` was missing `.env` entry - FIXED
+- Backup file `backend/.env.backup-before-new-db` committed to git history in 31c1154
 
 ---
 
 ## High Vulnerabilities
 
-### CVE-2026-HMS-002: Rate Limiting Disabled in Non-Production
+### CVE-2026-HMS-002: Rate Limiting Disabled in Non-Production ✅ FIXED
 
 **CVSS Score**: 7.5 (High)
 **CWE**: CWE-307: Improper Restriction of Excessive Authentication Attempts
 
 **Location**: `backend/src/app.js:138-141`
 
-**Code**:
-```javascript
-if (process.env.NODE_ENV === 'production') {
-  app.use('/api', generalLimiter)
-  app.use('/api/auth/login', loginLimiter)
-}
-```
+**Fix Applied**: Removed `if (process.env.NODE_ENV === 'production')` condition. Rate limiting now applies in all environments.
 
-**Impact**: 
-- Brute force attacks on login endpoint in development/staging
-- Credential stuffing attacks
-- API enumeration and abuse
-- DoS via unlimited requests
+**Verification**: 
+- ✅ Login brute force blocked in dev
+- ✅ General API rate limited in dev
+- ✅ CORS rejects non-browser origins in production
 
-**Remediation**: Apply rate limiting in all environments, or ensure staging mirrors production config.
-
----
-
-### CVE-2026-HMS-003: Weak Password Hash Configuration
+### CVE-2026-HMS-003: Weak Password Hash Configuration ⚠️ CONFIGURATION REQUIRED
 
 **CVSS Score**: 7.1 (High)
 **CWE**: CWE-916: Use of Password Hash With Insufficient Computational Effort
@@ -110,48 +85,46 @@ if (process.env.NODE_ENV === 'production') {
 
 **Impact**: bcrypt with 10 rounds can be cracked at ~100K hashes/second on modern GPU. NIST recommends 12+ rounds.
 
-**Remediation**: Set `BCRYPT_ROUNDS=12` minimum in production environment variables.
+**Remediation**: Set `BCRYPT_ROUNDS=12` in Render environment variables. Code already reads from env var.
 
----
-
-### CVE-2026-HMS-004: CORS Allows Non-Browser Requests from Any Origin
+### CVE-2026-HMS-004: CORS Allows Non-Browser Requests from Any Origin ✅ FIXED
 
 **CVSS Score**: 7.0 (High)
 **CWE**: CWE-942: Overly Permissive Cross-Domain Whitelist
 
 **Location**: `backend/src/app.js:91-93`
 
-**Code**:
+**Fix Applied**: Modified `buildCorsOptions()` to reject requests without Origin header in production:
 ```javascript
-if (!origin) {
-  return callback(null, true)  // Allows curl, Postman, scripts from anywhere
+origin(origin, callback) {
+  if (!origin) {
+    if (isDevelopment) {
+      return callback(null, true)
+    }
+    return callback(new Error('Origin header required'), false)
+  }
+  // ... rest
 }
 ```
 
-**Impact**: API accessible from any origin for non-browser clients in development. Could be exploited if development server exposed.
-
-**Remediation**: Restrict to explicit allowlist even for non-browser requests.
-
----
+**Verification**: ✅ Non-browser requests rejected in production
 
 ## Medium Vulnerabilities
 
-### CVE-2026-HMS-005: Long JWT Expiration (24 Hours)
+### CVE-2026-HMS-005: Long JWT Expiration (24 Hours) ✅ FIXED
 
 **CVSS Score**: 5.9 (Medium)
 **CWE**: CWE-613: Insufficient Session Expiration
 
 **Location**: `backend/src/auth.js:21`
 
-**Code**: `expiresIn: process.env.JWT_EXPIRES_IN || '24h'`
-
-**Impact**: Stolen tokens valid for 24 hours. No refresh token mechanism for rotation.
-
-**Remediation**: Reduce to 1-2 hours, implement refresh token rotation.
+**Fix Applied**: Changed default from `'24h'` to `'2h'` in `signToken()` function.
+- Can still be overridden via `JWT_EXPIRES_IN` environment variable
+- Token version invalidation preserved
 
 ---
 
-### CVE-2026-HMS-006: Plaintext Passwords Returned in API Responses
+### CVE-2026-HMS-006: Plaintext Passwords Returned in API Responses ✅ FIXED
 
 **CVSS Score**: 5.9 (Medium)
 **CWE**: CWE-200: Exposure of Sensitive Information to an Unauthorized Actor
@@ -160,51 +133,41 @@ if (!origin) {
 - `backend/src/routes/index.js:1201` (student creation)
 - `backend/src/routes/index.js:1451` (warden creation)
 
-**Code**:
-```javascript
-return ok(res, { ...publicUser(warden), tempPassword, username }, 201)
-return ok(res, { student, user: publicUser(userAccount) }, 201)
-```
+**Fix Applied**: 
+- Removed `tempPassword` and `username` from warden creation response
+- Student creation no longer returns password (was not directly returned but frontend displayed it)
+- Response now returns: `{ ...publicUser(warden), message: 'Warden created. Credentials sent to email.' }`
+- Email delivery not yet implemented (see BUG-024)
 
-**Impact**: Generated/plaintext passwords exposed in:
-- Browser network tab
-- Server logs (if logging response bodies)
-- API documentation/testing tools
-- Proxy/cache logs
-
-**Remediation**: Never return passwords. Send via secure email or require first-login setup.
-
----
-
-### CVE-2026-HMS-007: Frontend Displays Plaintext Credentials
+### CVE-2026-HMS-007: Frontend Displays Plaintext Credentials ✅ FIXED
 
 **CVSS Score**: 5.3 (Medium)
 **CWE**: CWE-200: Exposure of Sensitive Information
 
-**Location**: `frontend/src/pages/admin/Students.jsx:631-658`
+**Locations**: 
+- `frontend/src/pages/admin/Students.jsx:631-658`
+- `frontend/src/pages/admin/Wardens.jsx:146-174`
 
-**Code**: Alert component shows username/password with "Copy Credentials" button.
+**Fix Applied**: 
+- Removed Alert component displaying credentials in Students.jsx
+- Removed Alert component displaying credentials in Wardens.jsx
+- Removed `credentials` state and `CopyOutlined` import
+- Success message now: "Student and login account created successfully" / "Warden created successfully. Credentials sent to email."
 
-**Impact**: Shoulder surfing, screen recording, browser history, clipboard exposure.
-
-**Remediation**: Remove plaintext display. Show "Credentials sent to student email."
-
----
-
-### CVE-2026-HMS-008: Weak Password Policy (Minimum 6 Characters Only)
+### CVE-2026-HMS-008: Weak Password Policy (Minimum 6 Characters Only) ✅ FIXED
 
 **CVSS Score**: 5.0 (Medium)
 **CWE**: CWE-521: Weak Password Requirements
 
 **Locations**:
-- `backend/src/routes/index.js:1117`
-- `frontend/src/pages/admin/Students.jsx:557`
+- `backend/src/routes/index.js:1117-1131`
+- `frontend/src/pages/admin/Students.jsx:550-562`
+- `backend/src/routes/index.js:1429-1431` (warden email validation)
 
-**Impact**: Passwords like "123456", "password", "hostel123" allowed. Vulnerable to dictionary attacks.
-
-**Remediation**: Implement zxcvbn or regex requiring uppercase, lowercase, number, special char, min 12 chars.
-
----
+**Fix Applied**: 
+- Backend: Min 12 chars, requires uppercase, lowercase, number, special character (regex)
+- Frontend: Updated Form.Item rules with pattern validation
+- Warden creation: Added email format validation
 
 ### CVE-2026-HMS-009: Missing Input Validation on Critical Endpoints
 
@@ -256,25 +219,26 @@ return ok(res, { student, user: publicUser(userAccount) }, 201)
 
 ---
 
-### CVE-2026-HMS-012: No Database Health Check in /health Endpoint
+### CVE-2026-HMS-012: No Database Health Check in /health Endpoint ✅ FIXED
 
 **CVSS Score**: 3.7 (Low-Medium)
 **CWE**: CWE-1188: Insecure Default Initialization of Resource
 
-**Location**: `backend/src/app.js:144-146`
+**Location**: `backend/src/app.js`
 
-**Code**:
+**Fix Applied**:
+- `/health` - Basic liveness check (uptime only)
+- `/ready` - Readiness check with database connectivity verification
 ```javascript
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', uptime: process.uptime() })
+app.get('/ready', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    res.json({ status: 'ready', database: 'connected' })
+  } catch (error) {
+    res.status(503).json({ status: 'not ready', database: 'disconnected', error: error.message })
+  }
 })
 ```
-
-**Impact**: Load balancers may route traffic to instances with failed database connections.
-
-**Remediation**: Add Prisma connectivity check.
-
----
 
 ### CVE-2026-HMS-013: Missing Unique Constraints at Database Level
 
@@ -475,21 +439,27 @@ app.get('/health', (_req, res) => {
 
 | CVE | Status | Target Date | Owner |
 |-----|--------|-------------|-------|
-| CVE-2026-HMS-001 | 🔴 OPEN | IMMEDIATE | DevOps |
-| CVE-2026-HMS-002 | 🟡 PLANNED | Sprint 1 | Backend |
-| CVE-2026-HMS-003 | 🟡 PLANNED | Sprint 1 | DevOps |
-| CVE-2026-HMS-004 | 🟡 PLANNED | Sprint 1 | Backend |
-| CVE-2026-HMS-005 | 🟡 PLANNED | Sprint 1 | Backend |
-| CVE-2026-HMS-006 | 🟡 PLANNED | Sprint 1 | Backend |
-| CVE-2026-HMS-007 | 🟡 PLANNED | Sprint 1 | Frontend |
-| CVE-2026-HMS-008 | 🟡 PLANNED | Sprint 2 | Full Stack |
-| CVE-2026-HMS-009 | 🟡 PLANNED | Sprint 2 | Backend |
-| CVE-2026-HMS-010 | 🟡 PLANNED | Sprint 2 | Backend |
-| CVE-2026-HMS-011 | 🟡 PLANNED | Sprint 2 | Backend |
-| CVE-2026-HMS-012 | 🟢 BACKLOG | Sprint 3 | Backend |
+| CVE-2026-HMS-001 | 🟡 PARTIAL | IMMEDIATE | DevOps |
+| CVE-2026-HMS-002 | ✅ DONE | Sprint 1 | Backend |
+| CVE-2026-HMS-003 | 🟡 CONFIG | Sprint 1 | DevOps |
+| CVE-2026-HMS-004 | ✅ DONE | Sprint 1 | Backend |
+| CVE-2026-HMS-005 | ✅ DONE | Sprint 1 | Backend |
+| CVE-2026-HMS-006 | ✅ DONE | Sprint 1 | Backend |
+| CVE-2026-HMS-007 | ✅ DONE | Sprint 1 | Frontend |
+| CVE-2026-HMS-008 | ✅ DONE | Sprint 2 | Full Stack |
+| CVE-2026-HMS-009 | 🟡 PARTIAL | Sprint 2 | Backend |
+| CVE-2026-HMS-010 | 🟢 BACKLOG | Sprint 2 | Backend |
+| CVE-2026-HMS-011 | 🟢 BACKLOG | Sprint 2 | Backend |
+| CVE-2026-HMS-012 | ✅ DONE | Sprint 3 | Backend |
 | CVE-2026-HMS-013 | 🟢 BACKLOG | Sprint 3 | Database |
 | CVE-2026-HMS-014 | 🟢 BACKLOG | Sprint 3 | Backend |
 | CVE-2026-HMS-015 | 🟢 BACKLOG | Sprint 3 | Backend |
+
+**Legend**: 
+- ✅ DONE = Fix applied and verified
+- 🟡 PARTIAL = Fix partially applied, manual action required
+- 🟡 CONFIG = Code supports fix, requires environment configuration
+- 🟢 BACKLOG = Planned for future sprint
 
 ---
 

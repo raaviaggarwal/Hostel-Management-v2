@@ -18,7 +18,7 @@ export function signToken(user) {
     { sub: user.id, role: user.role, ver: user.tokenVersion },
     SECRET,
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+      expiresIn: process.env.JWT_EXPIRES_IN || '2h',
       issuer: JWT_ISSUER,
       audience: JWT_AUDIENCE,
       jwtid: randomUUID(),

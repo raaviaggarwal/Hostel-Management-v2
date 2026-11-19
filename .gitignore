@@ -12,3 +12,17 @@ dist/
 .env
 .env.*
 !.env.example
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Backend environment files
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Frontend environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example

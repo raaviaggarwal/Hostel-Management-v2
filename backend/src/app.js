@@ -66,6 +66,7 @@ import cors from 'cors'
 import rateLimit from 'express-rate-limit'
 
 import { router } from './routes/index.js'
+import { logger } from './logger.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -100,7 +101,10 @@ function buildCorsOptions() {
   return {
     origin(origin, callback) {
       if (!origin) {
-        return callback(null, true)
+        if (isDevelopment) {
+          return callback(null, true)
+        }
+        return callback(new Error('Origin header required'), false)
       }
 
       if (allowedOrigins.includes(origin)) {
@@ -135,14 +139,23 @@ export function createApp() {
 
   app.use(express.json({ limit: '2mb' }))
 
-  if (process.env.NODE_ENV === 'production') {
-    app.use('/api', generalLimiter)
-    app.use('/api/auth/login', loginLimiter)
-  }
+  // Rate limiting (all environments)
+  app.use('/api', generalLimiter)
+  app.use('/api/auth/login', loginLimiter)
 
   // Health check (unauthenticated, before API routes)
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', uptime: process.uptime() })
+  })
+
+  // Readiness check (includes database connectivity)
+  app.get('/ready', async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`
+      res.json({ status: 'ready', database: 'connected' })
+    } catch (error) {
+      res.status(503).json({ status: 'not ready', database: 'disconnected', error: error.message })
+    }
   })
 
   // API routes
@@ -163,10 +176,16 @@ export function createApp() {
 
   // Error handler
   app.use((err, req, res, next) => {
-    console.error('Server error:', err.message)
+    logger.error('Server error', {
+      message: err.message,
+      stack: err.stack,
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+    })
 
     // Return a useful CORS error instead of silently failing
-    if (err.message?.includes('CORS not allowed')) {
+    if (err.message?.includes('CORS not allowed') || err.message?.includes('Origin header required')) {
       return res.status(403).json({
         message: err.message,
       })
